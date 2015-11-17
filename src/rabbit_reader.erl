@@ -401,20 +401,18 @@ start_connection(Parent, HelperSup, Deb, Sock, SockTransform) ->
     done.
 
 log_connection_exception(Name, Ex) ->
-    Severity = case Ex of
-                   connection_closed_with_no_data_received -> debug;
-                   connection_closed_abruptly              -> warning;
-                   _                                       -> error
-               end,
+    Severity = get_exception_severity(Ex),
     log_connection_exception(Severity, Name, Ex).
 
 log_connection_exception(Severity, Name, {heartbeat_timeout, TimeoutSec}) ->
     %% Long line to avoid extra spaces and line breaks in log
-    log(Severity, "closing AMQP connection ~p (~s):~nmissed heartbeats from client, timeout: ~ps~n",
+    log(Severity, "closing AMQP connection ~p (~s):~nmissed heartbeats from "
+        "client, timeout: ~ps~n",
         [self(), Name, TimeoutSec]);
-log_connection_exception(Severity, Name, connection_closed_abruptly) ->
-    log(Severity, "closing AMQP connection ~p (~s):~nclient unexpectedly closed TCP connection~n",
-        [self(), Name]);
+log_connection_exception(Severity, Name, {connection_closed_abruptly, CS}) ->
+    log(Severity, "closing AMQP connection ~p (~s) when state was '~p':~nclient "
+        "unexpectedly closed TCP connection~n",
+        [self(), Name, CS]);
 log_connection_exception(Severity, Name, Ex) ->
     log(Severity, "closing AMQP connection ~p (~s):~n~p~n",
         [self(), Name, Ex]).
@@ -503,9 +501,9 @@ stop(tcp_healthcheck, State) ->
     %% failure.
     maybe_emit_stats(State),
     throw(connection_closed_with_no_data_received);
-stop(closed, State) ->
+stop(closed, State = #v1{connection_state = CS}) ->
     maybe_emit_stats(State),
-    throw(connection_closed_abruptly);
+    throw({connection_closed_abruptly, CS});
 stop(Reason, State) ->
     maybe_emit_stats(State),
     throw({inet_error, Reason}).
@@ -1082,13 +1080,14 @@ ensure_stats_timer(State) ->
 %%--------------------------------------------------------------------------
 
 handle_method0(MethodName, FieldsBin,
-               State = #v1{connection = #connection{protocol = Protocol}}) ->
+               State = #v1{connection = #connection{protocol = Protocol},
+                           connection_state = CS}) ->
     try
         handle_method0(Protocol:decode_method_fields(MethodName, FieldsBin),
                        State)
     catch throw:{inet_error, E} when E =:= closed; E =:= enotconn ->
             maybe_emit_stats(State),
-            throw(connection_closed_abruptly);
+            throw({connection_closed_abruptly, CS});
           exit:#amqp_error{method = none} = Reason ->
             handle_exception(State, 0, Reason#amqp_error{method = MethodName});
           Type:Reason ->
@@ -1466,3 +1465,10 @@ send_error_on_channel0_and_close(Channel, Protocol, Reason, State) ->
     State1 = close_connection(terminate_channels(State)),
     ok = send_on_channel0(State#v1.sock, CloseMethod, Protocol),
     State1.
+
+get_exception_severity(Ex) ->
+    case Ex of
+        connection_closed_with_no_data_received -> debug;
+        {connection_closed_abruptly, _}         -> warning;
+        _                                       -> error
+    end.
