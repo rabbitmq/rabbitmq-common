@@ -984,19 +984,8 @@ handle_method(#'basic.get'{queue = QueueNameBin, no_ack = NoAck},
     check_read_permitted(QueueName, State),
     case rabbit_amqqueue:with_exclusive_access_or_die(
            QueueName, ConnPid,
-	   fun (Q) ->
-                   C = case get(slow) of
-                           undefined -> 1;
-                           N         -> N + 1
-                       end,
-                   put(slow, C),
-                   case C of
-                       3 -> io:format("SLEEPING~n"),
-                            timer:sleep(20000);
-                       _ -> ok
-                   end,
-                   rabbit_amqqueue:basic_get(
-                        Q, self(), NoAck, rabbit_limiter:pid(Limiter))
+	   fun (Q) -> rabbit_amqqueue:basic_get(
+                    Q, self(), NoAck, rabbit_limiter:pid(Limiter))
            end) of
         {ok, MessageCount,
          Msg = {QName, QPid, _MsgId, Redelivered,
