@@ -364,7 +364,7 @@ init([Channel, ReaderPid, WriterPid, ConnPid, ConnName, Protocol, User, VHost,
                 conn_name               = ConnName,
                 limiter                 = rabbit_limiter:new(LimiterPid),
                 tx                      = none,
-                next_tag                = 1,
+                next_tag                = gen_delivery_tag(),
                 unacked_message_q       = queue:new(),
                 user                    = User,
                 virtual_host            = VHost,
@@ -984,7 +984,18 @@ handle_method(#'basic.get'{queue = QueueNameBin, no_ack = NoAck},
     check_read_permitted(QueueName, State),
     case rabbit_amqqueue:with_exclusive_access_or_die(
            QueueName, ConnPid,
-           fun (Q) -> rabbit_amqqueue:basic_get(
+	   fun (Q) ->
+                   C = case get(slow) of
+                           undefined -> 1;
+                           N         -> N + 1
+                       end,
+                   put(slow, C),
+                   case C of
+                       3 -> io:format("SLEEPING~n"),
+                            timer:sleep(20000);
+                       _ -> ok
+                   end,
+                   rabbit_amqqueue:basic_get(
                         Q, self(), NoAck, rabbit_limiter:pid(Limiter))
            end) of
         {ok, MessageCount,
@@ -1706,7 +1717,7 @@ record_sent(ConsumerTag, AckRequired,
                                   UAMQ);
                 false -> UAMQ
             end,
-    State#ch{unacked_message_q = UAMQ1, next_tag = DeliveryTag + 1}.
+    State#ch{unacked_message_q = UAMQ1, next_tag = gen_delivery_tag()}.
 
 %% NB: returns acks in youngest-first order
 collect_acks(Q, 0, true) ->
@@ -2026,3 +2037,8 @@ erase_queue_stats(QName) ->
 get_vhost(#ch{virtual_host = VHost}) -> VHost.
 
 get_user(#ch{user = User}) -> User.
+
+% Generate delivery tag as pseudo-random 64 bit unsigned integer.
+gen_delivery_tag() ->
+    <<U64:64/unsigned>> = crypto:rand_bytes(8),
+    U64.
