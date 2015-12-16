@@ -59,7 +59,7 @@
 %%
 %% %CopyrightEnd%
 %%
--module(supervisor2).
+-module(supervisor3).
 
 -behaviour(gen_server).
 
