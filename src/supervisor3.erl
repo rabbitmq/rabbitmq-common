@@ -1,7 +1,7 @@
 %% This file is a copy of supervisor.erl from the R16B Erlang/OTP
 %% distribution, with the following modifications:
 %%
-%% 1) the module name is supervisor3
+%% 1) the module name is supervisor2
 %%
 %% 2) a find_child/2 utility function has been added
 %%
@@ -40,10 +40,12 @@
 %% 5) normal, and {shutdown, _} exit reasons are all treated the same
 %%    (i.e. are regarded as normal exits)
 %%
-%% 6) introduce post_init callback
+%% 6) rename the module to supervisor3
+%%
+%% 7) introduce post_init callback
 %%
 %% Modifications 1-5 are (C) 2010-2013 GoPivotal, Inc.
-%% Modification 6 is (C) 2015 Klarna AB
+%% Modifications 6-7 are (C) 2015 Klarna AB
 %%
 %% %CopyrightBegin%
 %%
