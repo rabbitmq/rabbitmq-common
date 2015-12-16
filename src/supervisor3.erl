@@ -40,7 +40,10 @@
 %% 5) normal, and {shutdown, _} exit reasons are all treated the same
 %%    (i.e. are regarded as normal exits)
 %%
-%% All modifications are (C) 2010-2013 GoPivotal, Inc.
+%% 6) introduce post_init callback
+%%
+%% Modifications 1-5 are (C) 2010-2013 GoPivotal, Inc.
+%% Modification 6 is (C) 2015 Klarna AB
 %%
 %% %CopyrightBegin%
 %%
@@ -170,13 +173,22 @@
            MaxR            :: non_neg_integer(),
            MaxT            :: non_neg_integer()},
            [ChildSpec :: child_spec()]}}
+    | ignore
+    | post_init.
+
+-callback post_init(Args :: term()) ->
+    {ok, {{RestartStrategy :: strategy(),
+           MaxR            :: non_neg_integer(),
+           MaxT            :: non_neg_integer()},
+          [ChildSpec :: child_spec()]}}
     | ignore.
 -else.
 
 -export([behaviour_info/1]).
 
 behaviour_info(callbacks) ->
-    [{init,1}];
+    [ {init,1}
+    , {post_init, 1}];
 behaviour_info(_Other) ->
     undefined.
 
@@ -349,14 +361,10 @@ init({SupName, Mod, Args}) ->
     process_flag(trap_exit, true),
     case Mod:init(Args) of
 	{ok, {SupFlags, StartSpec}} ->
-	    case init_state(SupName, SupFlags, Mod, Args) of
-		{ok, State} when ?is_simple(State) ->
-		    init_dynamic(State, StartSpec);
-		{ok, State} ->
-		    init_children(State, StartSpec);
-		Error ->
-		    {stop, {supervisor_data, Error}}
-	    end;
+	    do_init(SupName, SupFlags, StartSpec, Mod, Args);
+  post_init ->
+      self() ! {post_init, SupName, Mod, Args},
+      {ok, #state{}};
 	ignore ->
 	    ignore;
 	Error ->
@@ -669,7 +677,7 @@ handle_cast({try_again_restart,Name,Reason}, State) ->
 %%
 -ifdef(use_specs).
 -spec handle_info(term(), state()) ->
-        {'noreply', state()} | {'stop', 'shutdown', state()}.
+        {'noreply', state()} | {'stop', term(), state()}.
 -endif.
 handle_info({'EXIT', Pid, Reason}, State) ->
     case restart_child(Pid, Reason, State) of
@@ -696,6 +704,19 @@ handle_info({delayed_restart, {RestartType, Reason, Child}}, State) ->
 %% delayed restart feature is for MaxR = 1, MaxT = some huge number
 %% (so that we don't end up bouncing around in non-delayed restarts)
 %% this is important.
+
+handle_info({post_init, SupName, Mod, Args}, State0) ->
+    Res = case Mod:post_init(Args) of
+              {ok, {SupFlags, StartSpec}} ->
+                  do_init(SupName, SupFlags, StartSpec, Mod, Args);
+              Error ->
+                  {stop, {bad_return, {Mod, post_init, Error}}}
+          end,
+    %% map init/1 result type to handle_* result type
+    case Res of
+        {ok, NewState} -> {noreply, NewState};
+        {stop, Reason} -> {stop, Reason, State0}
+    end;
 
 handle_info(Msg, State) ->
     error_logger:error_msg("Supervisor received unexpected message: ~p~n", 
@@ -1343,7 +1364,7 @@ remove_child(Child, State) ->
     State#state{children = Chs}.
 
 %%-----------------------------------------------------------------
-%% Func: init_state/4
+%% Func: do_init/5
 %% Args: SupName = {local, atom()} | {global, atom()} | self
 %%       Type = {Strategy, MaxIntensity, Period}
 %%         Strategy = one_for_one | one_for_all | simple_one_for_one |
@@ -1355,15 +1376,17 @@ remove_child(Child, State) ->
 %% Purpose: Check that Type is of correct type (!)
 %% Returns: {ok, state()} | Error
 %%-----------------------------------------------------------------
-init_state(SupName, Type, Mod, Args) ->
-    case catch init_state1(SupName, Type, Mod, Args) of
-	{ok, State} ->
-	    {ok, State};
-	Error ->
-	    Error
+do_init(SupName, Type, StartSpec, Mod, Args) ->
+    case catch init_state(SupName, Type, Mod, Args) of
+        {ok, State} when ?is_simple(State) ->
+            init_dynamic(State, StartSpec);
+        {ok, State} ->
+            init_children(State, StartSpec);
+        Error ->
+            {stop, {supervisor_data, Error}}
     end.
 
-init_state1(SupName, {Strategy, MaxIntensity, Period}, Mod, Args) ->
+init_state(SupName, {Strategy, MaxIntensity, Period}, Mod, Args) ->
     validStrategy(Strategy),
     validIntensity(MaxIntensity),
     validPeriod(Period),
@@ -1373,7 +1396,7 @@ init_state1(SupName, {Strategy, MaxIntensity, Period}, Mod, Args) ->
 		period = Period,
 		module = Mod,
 		args = Args}};
-init_state1(_SupName, Type, _, _) ->
+init_state(_SupName, Type, _, _) ->
     {invalid_type, Type}.
 
 validStrategy(simple_one_for_one) -> true;
