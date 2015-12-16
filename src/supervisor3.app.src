@@ -1,0 +1,8 @@
+%% -*- mode:erlang -*-
+{application,supervisor3,
+ [{description,"A copy of supervisor.erl from the R16B Erlang/OTP with modifications"},
+  {vsn,"1.0.0"},
+  {registered,[]},
+  {applications,[kernel,stdlib]},
+  {env,[]},
+  {modules,[]}]}.
