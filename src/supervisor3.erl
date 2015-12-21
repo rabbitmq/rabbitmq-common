@@ -44,8 +44,10 @@
 %%
 %% 7) introduce post_init callback
 %%
+%% 8) call os:timestamp/0 and timer:now_diff/2 for timestamps
+%%
 %% Modifications 1-5 are (C) 2010-2013 GoPivotal, Inc.
-%% Modifications 6-7 are (C) 2015 Klarna AB
+%% Modifications 6-8 are (C) 2015 Klarna AB
 %%
 %% %CopyrightBegin%
 %%
@@ -1517,7 +1519,7 @@ add_restart(State) ->
     I = State#state.intensity,
     P = State#state.period,
     R = State#state.restarts,
-    Now = time_compat:monotonic_time(),
+    Now = os:timestamp(),
     R1 = add_restart([Now|R], Now, P),
     State1 = State#state{restarts = R1},
     case length(R1) of
@@ -1538,7 +1540,7 @@ add_restart([], _, _) ->
     [].
 
 inPeriod(Time, Now, Period) ->
-    case time_compat:convert_time_unit(Now - Time, native, seconds) of
+    case timer:now_diff(Now, Time) div 1000000 of
 	T when T > Period ->
 	    false;
 	_ ->
