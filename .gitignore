@@ -6,3 +6,4 @@
 /.erlang.mk/
 /doc/
 /ebin/
+.rebar/
