@@ -942,7 +942,7 @@ is_abnormal_termination(_Other)        -> true.
 
 do_restart_delay({RestartType, Delay}, Reason, Child, State) ->
     IsCleanRetry = Reason =:= {?MODULE, delayed_restart},
-    case maybe_add_restart(State, IsCleanRetry) of
+    case add_restart(State, IsCleanRetry) of
         {ok, NState} ->
             maybe_restart(NState#state.strategy, Child, NState);
         {terminate, _NState} ->
@@ -1522,9 +1522,9 @@ validMods(Mods) -> throw({invalid_modules, Mods}).
 %%% ------------------------------------------------------
 
 add_restart(State) ->
-  maybe_add_restart(State, _IsCleanRetry = false).
+  add_restart(State, _IsCleanRetry = false).
 
-maybe_add_restart(State, IsCleanRetry) ->
+add_restart(State, IsCleanRetry) ->
   MaxR = State#state.intensity,
   P = State#state.period,
   R = State#state.restarts,
