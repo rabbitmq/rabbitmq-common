@@ -170,9 +170,26 @@
          peer_cert_validity]).
 
 -define(IS_RUNNING(State),
-        (State#v1.connection_state =:= running orelse
-         State#v1.connection_state =:= blocking orelse
-         State#v1.connection_state =:= blocked)).
+        (State#v1.connection_state =:= running_ok orelse
+         State#v1.connection_state =:= running_no_publish orelse
+         State#v1.connection_state =:= blocked_no_publish orelse
+         State#v1.connection_state =:= blocked_no_publish_flow orelse
+         State#v1.connection_state =:= blocked_flow orelse
+         State#v1.connection_state =:= blocked_sent)).
+
+-define(IS_BLOCKING(State),
+        (State#v1.connection_state =:= blocked_no_publish orelse
+         State#v1.connection_state =:= blocked_no_publish_flow orelse
+         State#v1.connection_state =:= blocked_flow orelse
+         State#v1.connection_state =:= blocked_sent)).
+
+-define(IS_FLOW_BLOCKED(State),
+        (State#v1.connection_state =:= blocked_no_publish_flow orelse
+         State#v1.connection_state =:= blocked_flow orelse)).
+
+-define(IS_RESOURCE_BLOCKED(State),
+        (State#v1.connection_state =:= blocked_no_publish orelse
+         State#v1.connection_state =:= blocked_sent orelse)).
 
 -define(IS_STOPPING(State),
         (State#v1.connection_state =:= closing orelse
@@ -527,7 +544,7 @@ handle_other({conserve_resources, Source, Conserve},
     State1 = control_throttle(
                State#v1{throttle = Throttle#throttle{alarmed_by = CR1}}),
     case {blocked_by_alarm(State), blocked_by_alarm(State1)} of
-        {false, true} -> ok = send_blocked(State1);
+        {false, true} -> ok = send_blocked(State1, blocked_message(State1));
         {true, false} -> ok = send_unblocked(State1);
         {_,        _} -> ok
     end,
@@ -603,6 +620,13 @@ handle_other({bump_credit, Msg}, State) ->
     %% Here we are receiving credit by some channel process.
     credit_flow:handle_bump_msg(Msg),
     control_throttle(State);
+handle_other({block, Msg}, State) ->
+
+    exit({not_supported, block, Msg});
+    % block(Msg);
+handle_other(unblock, State) ->
+    exit({not_supported, unblock});
+    % unblock(Msg);
 handle_other(Other, State) ->
     %% internal error -> something worth dying for
     maybe_emit_stats(State),
@@ -632,22 +656,30 @@ control_throttle(State = #v1{connection_state = CS, throttle = Throttle}) ->
         {_,            _} -> State
     end.
 
-maybe_block(State = #v1{connection_state = blocking,
-                        throttle         = Throttle}) ->
+block(State, BlockedBy, Message) ->
     ok = rabbit_heartbeat:pause_monitor(State#v1.heartbeater),
-    State1 = State#v1{connection_state = blocked,
-                      throttle = update_last_blocked_by(
-                                   Throttle#throttle{
-                                     last_blocked_at =
-                                       time_compat:monotonic_time()})},
-    case {blocked_by_alarm(State), blocked_by_alarm(State1)} of
-        {false, true} -> ok = send_blocked(State1);
-        {_,        _} -> ok
+    State#v1{connection_state = blocked_sent, 
+             throttle = Throttle#throttle{
+                            last_blocked_by = BlockedBy,
+                            last_blocked_at = time_compat:monotonic_time()})},
+    case should_send_blocked(State, State1) of
+        true  -> send_blocked(State1, Message);
+        false -> ok
     end,
-    State1;
-maybe_block(State) ->
-    State.
+    State1.
 
+should_send_unblocked(#v1{connection_state = blocked})
+
+should_send_blocked(#v1{connection_state = blocked}, _) -> false;
+should_send_blocked(_, State1 = #v1{throttle = Throttle}) ->
+    case Throttle of
+        #throttle{last_blocked_by = queue}     = true;
+        #throttle{last_blocked_by = flow}      = false;
+        #throttle{last_blocked_by = resource}  = false
+    end.
+
+block_reason(State = #v1{throttle = #throttle{last_blocked_by = Reason}}) ->
+    Reason.
 
 blocked_by_alarm(#v1{connection_state = blocked,
                      throttle         = #throttle{alarmed_by = CR}})
@@ -656,14 +688,17 @@ blocked_by_alarm(#v1{connection_state = blocked,
 blocked_by_alarm(#v1{}) ->
     false.
 
-send_blocked(#v1{throttle   = #throttle{alarmed_by = CR},
-                 connection = #connection{protocol     = Protocol,
+
+blocked_message(#v1{throttle = #throttle{alarmed_by = CR}}) ->
+    RStr = string:join([atom_to_list(A) || A <- CR], " & "),
+    list_to_binary(rabbit_misc:format("low on ~s", [RStr])).
+
+send_blocked(#v1{connection = #connection{protocol     = Protocol,
                                           capabilities = Capabilities},
-                 sock       = Sock}) ->
+                 sock       = Sock}, Reason) ->
     case rabbit_misc:table_lookup(Capabilities, <<"connection.blocked">>) of
         {bool, true} ->
-            RStr = string:join([atom_to_list(A) || A <- CR], " & "),
-            Reason = list_to_binary(rabbit_misc:format("low on ~s", [RStr])),
+            
             ok = send_on_channel0(Sock, #'connection.blocked'{reason = Reason},
                                   Protocol);
         _ ->
@@ -684,6 +719,57 @@ update_last_blocked_by(Throttle = #throttle{alarmed_by = []}) ->
     Throttle#throttle{last_blocked_by = flow};
 update_last_blocked_by(Throttle) ->
     Throttle#throttle{last_blocked_by = resource}.
+
+had_publish(State = #v1{connection_state = blocked_no_publish_flow}) ->
+    State#v1{connection_state = blocked_flow};
+had_publish(State = #v1{connection_state = blocked_no_publish}) ->
+    block(State);
+had_publish(State = #v1{connection_state = running_no_publish}) ->
+    State#v1{connection_state = running_ok};
+had_publish(State) ->
+    State.
+
+flow_block(true, State = #v1{connection_state = running_ok}) ->
+    State#v1{connection_state = blocked_flow};
+flow_block(true, State = #v1{connection_state = running_no_publish}) ->
+    State#v1{connection_state = blocked_no_publish_flow};
+flow_block(true, State = #v1{connection_state = ConnState}) 
+        when ?IS_FLOW_BLOCKED(ConnState) ->
+    State;
+flow_block(true, State = #v1{connection_state = ConnState}) 
+        when ?IS_RESOURCE_BLOCKED(ConnState) ->
+    State;
+flow_block(false, State = #v1{connection_state = blocked_flow}) ->
+    State#v1{connection_state = running_ok};
+flow_block(false, State = #v1{connection_state = blocked_no_publish_flow}) ->
+    State#v1{connection_state = running_no_publish};
+flow_block(false, State) -> State.
+
+resource_block(true, State = #v1{connection_state = running_ok}) ->
+    block(State);
+resource_block(true, State = #v1{connection_state = running_no_publish}) ->
+    State#v1{connection_state = blocked_no_publish};
+resource_block(true, State = #v1{connection_state = blocked_no_publish_flow}) ->
+    State#v1{connection_state = blocked_no_publish};
+resource_block(true, State = #v1{connection_state = blocked_flow}) ->
+    block(State);
+resource_block(true, State) -> State;
+resource_block(false, State = #v1{connection_state = blocked_sent}) ->
+    send_unblocked(State),
+    State#v1{connection_state = running_ok};
+resource_block(false, State = #v1{connection_state = blocked_sent}) ->
+    send_unblocked(State),
+    State#v1{connection_state = running_ok};
+resource_block(false, State = #v1{connection_state = blocked_no_publish}) ->
+    % Maybe return to blocked_no_publish_flow?
+    State#v1{connection_state = running_no_publish};
+resource_block(false, State) -> State.
+
+block(State) ->
+    BlockReason = block_reason(State),
+    Message = blocked_message(State),
+    block(State, BlockReason, Message).
+
 
 %%--------------------------------------------------------------------------
 %% error handling / termination
@@ -999,9 +1085,9 @@ post_process_frame({method, 'channel.close_ok', _}, ChPid, State) ->
     %% since we cannot possibly be in the 'closing' state.
     control_throttle(State1);
 post_process_frame({content_header, _, _, _, _}, _ChPid, State) ->
-    maybe_block(State);
+    had_publish(State);
 post_process_frame({content_body, _}, _ChPid, State) ->
-    maybe_block(State);
+    had_publish(State);
 post_process_frame(_Frame, _ChPid, State) ->
     State.
 
