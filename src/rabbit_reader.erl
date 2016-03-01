@@ -380,6 +380,7 @@ start_connection(Parent, HelperSup, Deb, Sock) ->
                 throttle            = #throttle{
                                          alarmed_by      = [],
                                          last_blocked_at = never,
+                                         have_publishes  = false,
                                          blocked_reasons = sets:new(),
                                          blocked_messages = maps:new(),
                                          connection_blocked_message_sent = false
@@ -1512,8 +1513,8 @@ update_last_blocked_at(Throttle) ->
 % blocked_by_queue(#throttle{blocked_reasons = Reasons}) ->
 %     sets:is_element(queue, Reasons).
 
-blocked_by_any(#throttle{blocked_reasons = []}) -> false;
-blocked_by_any(#throttle{}) -> true.
+blocked_by_any(#throttle{blocked_reasons = Reasons}) -> 
+    sets:size(Reasons) > 0.
 
 have_publishes(#throttle{have_publishes = HP}) -> HP.
 
