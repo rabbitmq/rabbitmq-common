@@ -524,13 +524,13 @@ stop(Reason, State) ->
     throw({inet_error, Reason}).
 
 handle_other({conserve_resources, Source, Conserve},
-             State = #v1{throttle = #throttle{alarmed_by = CR}}) ->
+             State = #v1{throttle = Throttle = #throttle{alarmed_by = CR}}) ->
     CR1 = case Conserve of
               true  -> lists:usort([Source | CR]);
               false -> CR -- [Source]
           end,
-    State1 = control_throttle(update_alarms(CR1, State)),
-    State1;
+    Throttle1 = update_alarms(CR1, Throttle),
+    control_throttle(State#v1{throttle = Throttle1});
 handle_other({channel_closing, ChPid}, State) ->
     ok = rabbit_channel:ready_for_close(ChPid),
     {_, State1} = channel_cleanup(ChPid, State),
@@ -602,11 +602,13 @@ handle_other({bump_credit, Msg}, State) ->
     %% Here we are receiving credit by some channel process.
     credit_flow:handle_bump_msg(Msg),
     control_throttle(State);
-handle_other({block, Msg}, State) ->
+handle_other({block, Msg}, State = #v1{throttle = Throttle}) ->
 % TODO: multiple queues
-    control_throttle(update_queue_block({true, Msg}, State));
-handle_other(unblock, State) ->
-    control_throttle(update_queue_block(false, State));
+    Throttle1 = update_queue_block({true, Msg}, Throttle),
+    control_throttle(State#v1{throttle = Throttle1});
+handle_other(unblock, State = #v1{throttle = Throttle}) ->
+    Throttle1 = update_queue_block(false, Throttle),
+    control_throttle(State#v1{throttle = Throttle1});
 handle_other(Other, State) ->
     %% internal error -> something worth dying for
     maybe_emit_stats(State),
@@ -1469,7 +1471,7 @@ send_error_on_channel0_and_close(Channel, Protocol, Reason, State) ->
 % Throttle specific functions:
 
 blocked_message(#throttle{blocked_messages = Msgs}) ->
-    rabbit_misc:to_json(maps:to_list(Msgs)).
+    rabbit_misc:json_encode(maps:to_list(Msgs)).
 
 update_alarms([], Throttle = #throttle{blocked_messages = Msgs, 
                                        blocked_reasons = Reasons}) ->
@@ -1589,7 +1591,8 @@ control_throttle(State = #v1{connection_state = CS, throttle = Throttle}) ->
                                                          Throttle)},
     case CS of
         running -> maybe_block(State1);
-        blocked -> maybe_block(maybe_unblock(State1)) %% Unblock and maybe reblock
+        blocked -> maybe_block(maybe_unblock(State1)); %% Unblock and maybe reblock
+        _       -> State1 
     end.
 
 
