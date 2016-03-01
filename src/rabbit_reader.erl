@@ -1471,7 +1471,8 @@ send_error_on_channel0_and_close(Channel, Protocol, Reason, State) ->
 % Throttle specific functions:
 
 blocked_message(#throttle{blocked_messages = Msgs}) ->
-    rabbit_misc:json_encode(maps:to_list(Msgs)).
+    {ok, Msg} = rabbit_misc:json_encode(maps:to_list(Msgs)),
+    iolist_to_binary(Msg).
 
 update_alarms([], Throttle = #throttle{blocked_messages = Msgs, 
                                        blocked_reasons = Reasons}) ->
