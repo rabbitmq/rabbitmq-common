@@ -148,9 +148,13 @@
   alarmed_by,
   %% never | timestamp()
   last_blocked_at,
-  blocked_reasons,
-  blocked_messages,
-  have_publishes,
+  % set()
+  block_reasons,
+  % map()
+  block_messages,
+  %% boolean() true if received any publishes
+  can_block,
+  % boolean()
   connection_blocked_message_sent
 }).
 
@@ -380,9 +384,9 @@ start_connection(Parent, HelperSup, Deb, Sock) ->
                 throttle            = #throttle{
                                          alarmed_by      = [],
                                          last_blocked_at = never,
-                                         have_publishes  = false,
-                                         blocked_reasons = sets:new(),
-                                         blocked_messages = maps:new(),
+                                         can_block  = false,
+                                         block_reasons = sets:new(),
+                                         block_messages = maps:new(),
                                          connection_blocked_message_sent = false
                                          }},
     try
@@ -1355,7 +1359,7 @@ i(peer_cert_subject,  S) -> cert_info(fun rabbit_ssl:peer_cert_subject/1,  S);
 i(peer_cert_validity, S) -> cert_info(fun rabbit_ssl:peer_cert_validity/1, S);
 i(channels,           #v1{channel_count = ChannelCount}) -> ChannelCount;
 i(state, #v1{connection_state = ConnectionState,
-             throttle         = #throttle{blocked_reasons = Reasons}}) ->
+             throttle         = #throttle{block_reasons = Reasons}}) ->
     case sets:is_element(flow, Reasons) andalso
          sets:size(Reasons) == 1 of
         true  -> flow;
@@ -1470,35 +1474,35 @@ send_error_on_channel0_and_close(Channel, Protocol, Reason, State) ->
 
 % Throttle specific functions:
 
-blocked_message(#throttle{blocked_messages = Msgs}) ->
+blocked_message(#throttle{block_messages = Msgs}) ->
     {ok, Msg} = rabbit_misc:json_encode(maps:to_list(Msgs)),
     iolist_to_binary(Msg).
 
-update_alarms([], Throttle = #throttle{blocked_messages = Msgs, 
-                                       blocked_reasons = Reasons}) ->
+update_alarms([], Throttle = #throttle{block_messages = Msgs, 
+                                       block_reasons = Reasons}) ->
     Throttle#throttle{alarmed_by = [], 
-                      blocked_reasons = sets:del_element(resource, Reasons),
-                      blocked_messages = maps:remove(resource, Msgs)};
-update_alarms(Val, Throttle = #throttle{blocked_messages = Msgs, 
-                                        blocked_reasons = Reasons}) ->
+                      block_reasons = sets:del_element(resource, Reasons),
+                      block_messages = maps:remove(resource, Msgs)};
+update_alarms(Val, Throttle = #throttle{block_messages = Msgs, 
+                                        block_reasons = Reasons}) ->
     Throttle#throttle{alarmed_by = Val,
-                      blocked_messages = maps:put(resource, alarm_message(Val), Msgs),
-                      blocked_reasons = sets:add_element(resource, Reasons)}.
+                      block_messages = maps:put(resource, alarm_message(Val), Msgs),
+                      block_reasons = sets:add_element(resource, Reasons)}.
 
-update_flow_block(true, Throttle = #throttle{blocked_reasons = Reasons}) ->
-    Throttle#throttle{blocked_reasons = sets:add_element(flow, Reasons)};
-update_flow_block(false, Throttle = #throttle{blocked_reasons = Reasons}) ->
-    Throttle#throttle{blocked_reasons = sets:del_element(flow, Reasons)}.
+update_flow_block(true, Throttle = #throttle{block_reasons = Reasons}) ->
+    Throttle#throttle{block_reasons = sets:add_element(flow, Reasons)};
+update_flow_block(false, Throttle = #throttle{block_reasons = Reasons}) ->
+    Throttle#throttle{block_reasons = sets:del_element(flow, Reasons)}.
 
-update_queue_block(false, Throttle = #throttle{blocked_messages = Msgs, 
-                                               blocked_reasons = Reasons}) ->
-    Throttle#throttle{blocked_messages = maps:remove(queue, Msgs),
-                      blocked_reasons = sets:del_element(queue, Reasons)};
+update_queue_block(false, Throttle = #throttle{block_messages = Msgs, 
+                                               block_reasons = Reasons}) ->
+    Throttle#throttle{block_messages = maps:remove(queue, Msgs),
+                      block_reasons = sets:del_element(queue, Reasons)};
 update_queue_block({true, Message}, 
-                   Throttle = #throttle{blocked_messages = Msgs, 
-                                        blocked_reasons = Reasons}) ->
-    Throttle#throttle{blocked_reasons = sets:add_element(queue, Reasons),
-                      blocked_messages = maps:put(queue, Message, Msgs)}.
+                   Throttle = #throttle{block_messages = Msgs, 
+                                        block_reasons = Reasons}) ->
+    Throttle#throttle{block_reasons = sets:add_element(queue, Reasons),
+                      block_messages = maps:put(queue, Message, Msgs)}.
 
 alarm_message(CR) ->
     RStr = string:join([atom_to_list(A) || A <- CR], " & "),
@@ -1507,37 +1511,28 @@ alarm_message(CR) ->
 update_last_blocked_at(Throttle) ->
     Throttle#throttle{last_blocked_at = time_compat:monotonic_time()}.
 
-% blocked_by_flow(#throttle{blocked_reasons = Reasons}) ->
-%     sets:is_element(flow, Reasons).
-
-% blocked_by_alarm(#throttle{blocked_reasons = Reasons}) ->
-%     sets:is_element(resource, Reasons).
-
-% blocked_by_queue(#throttle{blocked_reasons = Reasons}) ->
-%     sets:is_element(queue, Reasons).
-
-blocked_by_any(#throttle{blocked_reasons = Reasons}) -> 
+blocked_by_any(#throttle{block_reasons = Reasons}) -> 
     sets:size(Reasons) > 0.
 
-have_publishes(#throttle{have_publishes = HP}) -> HP.
+can_block(#throttle{can_block = HP}) -> HP.
 
 connection_blocked_message_sent(
     #throttle{connection_blocked_message_sent = BS}) -> BS.
 
-should_send_blocked(Throttle = #throttle{blocked_reasons = Reasons}) ->
-    have_publishes(Throttle)
+should_send_blocked(Throttle = #throttle{block_reasons = Reasons}) ->
+    can_block(Throttle)
     andalso
     sets:size(sets:del_element(flow, Reasons)) =/= 0
     andalso
     not connection_blocked_message_sent(Throttle).
 
-should_send_unblocked(Throttle = #throttle{blocked_reasons = Reasons}) ->
+should_send_unblocked(Throttle = #throttle{block_reasons = Reasons}) ->
     connection_blocked_message_sent(Throttle)
     andalso
     sets:size(sets:del_element(flow, Reasons)) == 0.
 
 should_block_connection(Throttle) ->
-    have_publishes(Throttle) andalso blocked_by_any(Throttle).
+    can_block(Throttle) andalso blocked_by_any(Throttle).
 
 should_unblock_connection(Throttle) ->
     not should_block_connection(Throttle).
@@ -1584,7 +1579,7 @@ maybe_send_blocked_or_unblocked(State = #v1{throttle = Throttle}) ->
     end.
 
 publish_received(State = #v1{throttle = Throttle}) ->
-    Throttle1 = Throttle#throttle{have_publishes = true},
+    Throttle1 = Throttle#throttle{can_block = true},
     maybe_block(State#v1{throttle = Throttle1}).
 
 control_throttle(State = #v1{connection_state = CS, throttle = Throttle}) ->
