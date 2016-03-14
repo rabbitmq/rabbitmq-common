@@ -154,7 +154,7 @@
   % a map of blocking reason => connection.blocked message
   block_messages,
   %% true if received any publishes, false otherwise
-  can_block,
+  should_block,
   %% true if we had we sent a connection.blocked,
   %% false otherwise
   connection_blocked_message_sent
@@ -386,7 +386,7 @@ start_connection(Parent, HelperSup, Deb, Sock) ->
                 throttle            = #throttle{
                                          alarmed_by      = [],
                                          last_blocked_at = never,
-                                         can_block  = false,
+                                         should_block = false,
                                          block_reasons = sets:new(),
                                          block_messages = maps:new(),
                                          connection_blocked_message_sent = false
@@ -1510,13 +1510,13 @@ update_last_blocked_at(Throttle) ->
 blocked_by_any(#throttle{block_reasons = Reasons}) -> 
     sets:size(Reasons) > 0.
 
-can_block(#throttle{can_block = HP}) -> HP.
+should_block(#throttle{should_block = HP}) -> HP.
 
 connection_blocked_message_sent(
     #throttle{connection_blocked_message_sent = BS}) -> BS.
 
 should_send_blocked(Throttle = #throttle{block_reasons = Reasons}) ->
-    can_block(Throttle)
+    should_block(Throttle)
     andalso
     sets:size(sets:del_element(flow, Reasons)) =/= 0
     andalso
@@ -1528,7 +1528,7 @@ should_send_unblocked(Throttle = #throttle{block_reasons = Reasons}) ->
     sets:size(sets:del_element(flow, Reasons)) == 0.
 
 should_block_connection(Throttle) ->
-    can_block(Throttle) andalso blocked_by_any(Throttle).
+    should_block(Throttle) andalso blocked_by_any(Throttle).
 
 should_unblock_connection(Throttle) ->
     not should_block_connection(Throttle).
@@ -1575,7 +1575,7 @@ maybe_send_blocked_or_unblocked(State = #v1{throttle = Throttle}) ->
     end.
 
 publish_received(State = #v1{throttle = Throttle}) ->
-    Throttle1 = Throttle#throttle{can_block = true},
+    Throttle1 = Throttle#throttle{should_block = true},
     maybe_block(State#v1{throttle = Throttle1}).
 
 control_throttle(State = #v1{connection_state = CS, throttle = Throttle}) ->
