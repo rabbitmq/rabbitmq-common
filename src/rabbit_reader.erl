@@ -1352,12 +1352,19 @@ i(peer_cert_subject,  S) -> cert_info(fun rabbit_ssl:peer_cert_subject/1,  S);
 i(peer_cert_validity, S) -> cert_info(fun rabbit_ssl:peer_cert_validity/1, S);
 i(channels,           #v1{channel_count = ChannelCount}) -> ChannelCount;
 i(state, #v1{connection_state = ConnectionState,
-             throttle         = #throttle{blocked_by = Reasons}}) ->
-    case sets:is_element(flow, Reasons) andalso
-         sets:size(Reasons) == 1 of
+             throttle         = #throttle{blocked_by = Reasons,
+                                          last_blocked_at = T} = Throttle}) ->
+    %% not throttled by resource or other longer-term reasons
+    %% TODO: come up with a sensible function name
+    case sets:size(sets:del_element(flow, Reasons)) =:= 0 andalso
+        (credit_flow:blocked()        %% throttled by flow now
+         orelse                       %% throttled by flow recently
+           (is_blocked_by_flow(Throttle) andalso T =/= never andalso
+            time_compat:convert_time_unit(time_compat:monotonic_time() - T,
+                                          native,
+                                          micro_seconds) < 5000000)) of
         true  -> flow;
-        % TODO: can be much more info about blocking state
-        false -> ConnectionState 
+        false -> ConnectionState
     end;
 i(Item,               #v1{connection = Conn}) -> ic(Item, Conn).
 
@@ -1493,6 +1500,9 @@ should_send_unblocked(Throttle = #throttle{blocked_by = Reasons}) ->
 
 is_blocked(#throttle{blocked_by = Reasons}) ->
     sets:size(Reasons) > 0.
+
+is_blocked_by_flow(#throttle{blocked_by = Reasons}) ->
+    sets:is_element(flow, Reasons).
 
 should_block(#throttle{should_block = Val}) -> Val.
 
