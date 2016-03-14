@@ -608,13 +608,6 @@ handle_other({bump_credit, Msg}, State) ->
     %% Here we are receiving credit by some channel process.
     credit_flow:handle_bump_msg(Msg),
     control_throttle(State);
-handle_other({block, Msg}, State = #v1{throttle = Throttle}) ->
-% TODO: multiple queues
-    Throttle1 = update_queue_block({true, Msg}, Throttle),
-    control_throttle(State#v1{throttle = Throttle1});
-handle_other(unblock, State = #v1{throttle = Throttle}) ->
-    Throttle1 = update_queue_block(false, Throttle),
-    control_throttle(State#v1{throttle = Throttle1});
 handle_other(Other, State) ->
     %% internal error -> something worth dying for
     maybe_emit_stats(State),
@@ -1489,16 +1482,6 @@ update_flow_block(true, Throttle = #throttle{block_reasons = Reasons}) ->
     Throttle#throttle{block_reasons = sets:add_element(flow, Reasons)};
 update_flow_block(false, Throttle = #throttle{block_reasons = Reasons}) ->
     Throttle#throttle{block_reasons = sets:del_element(flow, Reasons)}.
-
-update_queue_block(false, Throttle = #throttle{block_messages = Msgs, 
-                                               block_reasons = Reasons}) ->
-    Throttle#throttle{block_messages = maps:remove(queue, Msgs),
-                      block_reasons = sets:del_element(queue, Reasons)};
-update_queue_block({true, Message}, 
-                   Throttle = #throttle{block_messages = Msgs, 
-                                        block_reasons = Reasons}) ->
-    Throttle#throttle{block_reasons = sets:add_element(queue, Reasons),
-                      block_messages = maps:put(queue, Message, Msgs)}.
 
 alarm_message(CR) ->
     RStr = string:join([atom_to_list(A) || A <- CR], " & "),
