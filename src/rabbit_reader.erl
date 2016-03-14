@@ -148,7 +148,8 @@
   alarmed_by,
   %% never | timestamp()
   last_blocked_at,
-  % set()
+  %% a set of the reasons why we are
+  %% blocked: flow, resource
   block_reasons,
   % map()
   block_messages,
