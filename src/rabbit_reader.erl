@@ -151,11 +151,12 @@
   %% a set of the reasons why we are
   %% blocked: flow, resource
   block_reasons,
-  % map()
+  % a map of blocking reason => connection.blocked message
   block_messages,
-  %% boolean() true if received any publishes
+  %% true if received any publishes, false otherwise
   can_block,
-  % boolean()
+  %% true if we had we sent a connection.blocked,
+  %% false otherwise
   connection_blocked_message_sent
 }).
 
