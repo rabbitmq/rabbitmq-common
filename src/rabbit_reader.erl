@@ -153,6 +153,8 @@
   %% More reasons can be added in the future.
   blocked_by,
   %% true if received any publishes, false otherwise
+  %% note that this will also be true when connection is
+  %% already blocked
   should_block,
   %% true if we had we sent a connection.blocked,
   %% false otherwise
@@ -1364,7 +1366,17 @@ i(state, #v1{connection_state = ConnectionState,
                                           native,
                                           micro_seconds) < 5000000)) of
         true  -> flow;
-        false -> ConnectionState
+        false ->
+          case {has_reasons_to_block(Throttle), ConnectionState} of
+            %% blocked
+            {_,    blocked} -> blocked;
+            %% not yet blocked (there were no publishes)
+            {true, running} -> blocking;
+            %% not blocked
+            {false,      _} -> ConnectionState;
+            %% catch all to be defensive
+            _               -> ConnectionState
+          end
     end;
 i(Item,               #v1{connection = Conn}) -> ic(Item, Conn).
 
