@@ -1498,7 +1498,9 @@ should_send_unblocked(Throttle = #throttle{blocked_by = Reasons}) ->
     andalso
     sets:size(sets:del_element(flow, Reasons)) == 0.
 
-is_blocked(#throttle{blocked_by = Reasons}) ->
+%% Returns true if we have a reason to block
+%% this connection.
+has_reasons_to_block(#throttle{blocked_by = Reasons}) ->
     sets:size(Reasons) > 0.
 
 is_blocked_by_flow(#throttle{blocked_by = Reasons}) ->
@@ -1507,7 +1509,7 @@ is_blocked_by_flow(#throttle{blocked_by = Reasons}) ->
 should_block(#throttle{should_block = Val}) -> Val.
 
 should_block_connection(Throttle) ->
-    should_block(Throttle) andalso is_blocked(Throttle).
+    should_block(Throttle) andalso has_reasons_to_block(Throttle).
 
 should_unblock_connection(Throttle) ->
     not should_block_connection(Throttle).
@@ -1530,7 +1532,8 @@ maybe_unblock(State = #v1{throttle = Throttle}) ->
     case should_unblock_connection(Throttle) of
         true ->
             ok = rabbit_heartbeat:resume_monitor(State#v1.heartbeater),
-            State1 = State#v1{connection_state = running},
+            State1 = State#v1{connection_state = running,
+                              throttle = Throttle#throttle{should_block = false}},
             maybe_send_unblocked(State1);
         false -> State
     end.
@@ -1554,8 +1557,12 @@ maybe_send_blocked_or_unblocked(State = #v1{throttle = Throttle}) ->
     end.
 
 publish_received(State = #v1{throttle = Throttle}) ->
-    Throttle1 = Throttle#throttle{should_block = true},
-    maybe_block(State#v1{throttle = Throttle1}).
+    case has_reasons_to_block(Throttle) of
+      false -> State;
+      true  ->
+        Throttle1 = Throttle#throttle{should_block = true},
+        maybe_block(State#v1{throttle = Throttle1})
+    end.
 
 control_throttle(State = #v1{connection_state = CS,
                              throttle = #throttle{blocked_by = Reasons} = Throttle}) ->
