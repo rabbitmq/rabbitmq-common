@@ -144,8 +144,6 @@
           connected_at}).
 
 -record(throttle, {
-  %% list of active alarms
-  alarmed_by,
   %% never | timestamp()
   last_blocked_at,
   %% a set of the reasons why we are
@@ -385,7 +383,6 @@ start_connection(Parent, HelperSup, Deb, Sock) ->
                 channel_sup_sup_pid = none,
                 channel_count       = 0,
                 throttle            = #throttle{
-                                         alarmed_by      = [],
                                          last_blocked_at = never,
                                          should_block = false,
                                          blocked_by = sets:new(),
@@ -1165,8 +1162,11 @@ handle_method0(#'connection.open'{virtual_host = VHostPath},
     ok = rabbit_access_control:check_vhost_access(User, VHostPath, Sock),
     NewConnection = Connection#connection{vhost = VHostPath},
     ok = send_on_channel0(Sock, #'connection.open_ok'{}, Protocol),
-    Conserve = rabbit_alarm:register(self(), {?MODULE, conserve_resources, []}),
-    Throttle1 = Throttle#throttle{alarmed_by = Conserve},
+
+    Alarms = rabbit_alarm:register(self(), {?MODULE, conserve_resources, []}),
+    BlockedBy = sets:from_list([{resource, Alarm} || Alarm <- Alarms]),
+    Throttle1 = Throttle#throttle{blocked_by = BlockedBy},
+
     {ok, ChannelSupSupPid} =
         rabbit_connection_helper_sup:start_channel_sup_sup(SupPid),
     State1 = control_throttle(
