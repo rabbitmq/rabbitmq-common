@@ -5,4 +5,8 @@
   {registered,[]},
   {applications,[kernel,stdlib]},
   {env,[]},
-  {modules,[]}]}.
+  {modules,[]},
+  {maintainers, ["Shi Zaiming", "Ivan Dyachkov"]},
+  {licenses, []},
+  {links, [{"Github", "https://github.com/klarna/supervisor3"}]},
+  {files, ["src", "README.md", "Makefile", "erlang.mk"]}]}.
