@@ -2,9 +2,9 @@
 This file is a copy of supervisor.erl from the R16B Erlang/OTP
 distribution, with the following modifications:
 
-1. The module name is supervisor2
+1. The module name is supervisor2.
 
-2. A find_child/2 utility function has been added
+2. A find_child/2 utility function has been added.
 
 3. Added an 'intrinsic' restart type. Like the transient type, this
 type means the child should only be restarted if the child exits
@@ -36,16 +36,16 @@ gen_server will not log the error. Thus from gen_server's
 perspective it's a normal exit, whilst from supervisor's
 perspective, it's an abnormal exit.
 
-5. Normal, and {shutdown, _} exit reasons are all treated the same
-   (i.e. are regarded as normal exits)
+5. Normal, and {shutdown, _} exit reasons are all treated the same (i.e. are regarded as normal exits).
 
-6. Rename the module to supervisor3
+6. Rename the module to supervisor3.
 
-7. Introduce post_init callback
+7. Introduce post_init callback.
+If init/1 callback returns 'post_init', supervisor3 process will start normally and sent a loopback message to self. In handler for that message it will call Callback:post_init/1. This is a common pattern for gen_server implemented in supervisor. This can be used in scenarios when a supervisor during init phase needs to talk to some remote resource which could be unavailable. If it crashes in init/1, top level supervisor will not try to restart it.
 
-8. Call os:timestamp/0 and timer:now_diff/2 for timestamps
+8. Call os:timestamp/0 and timer:now_diff/2 for timestamps.
 
-9. Ignore delayed retry in MaxR accumulation
+9. Ignore delayed retry in MaxR accumulation.
 
 Modifications 1-5 are (C) 2010-2013 GoPivotal, Inc.
 
