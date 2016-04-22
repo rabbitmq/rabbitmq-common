@@ -41,7 +41,8 @@ perspective, it's an abnormal exit.
 6. Rename the module to supervisor3.
 
 7. Introduce post_init callback.
-If init/1 callback returns 'post_init', supervisor3 process will start normally and sent a loopback message to self. In handler for that message it will call Callback:post_init/1. This is a common pattern for gen_server implemented in supervisor. This can be used in scenarios when a supervisor during init phase needs to talk to some remote resource which could be unavailable. If it crashes in init/1, top level supervisor will not try to restart it.
+If Callback:init/1 returns 'post_int', Callback:post_init/1 is called to perform the genuine initialization work.
+This is to avoid crashes in Callback:init/1 which may prevent the parent supervisor from restarting it.
 
 8. Call os:timestamp/0 and timer:now_diff/2 for timestamps.
 
