@@ -10,4 +10,4 @@
   {licenses, ["MPL"]},
   {links, [{"Github", "https://github.com/klarna/supervisor3"}]},
   {build_tools, ["make", "rebar3"]},
-  {files, ["src", "README.md", "Makefile", "erlang.mk"]}]}.
+  {files, ["src", "README.md", "Makefile", "erlang.mk", "LICENSE", "LICENSE-MPL-RabbitMQ"]}]}.
