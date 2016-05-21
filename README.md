@@ -48,6 +48,8 @@ This is to avoid crashes in Callback:init/1 which may prevent the parent supervi
 
 9. Ignore delayed retry in MaxR accumulation.
 
+10. Use specs by default
+
 Modifications 1-5 are (C) 2010-2013 GoPivotal, Inc.
 
-Modifications 6-9 are (C) 2015 Klarna AB
+Modifications 6-10 are (C) 2015-2016 Klarna AB

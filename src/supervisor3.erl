@@ -84,6 +84,16 @@
 	 terminate/2, code_change/3]).
 -export([try_again_restart/3]).
 
+%% compile without specs if and only if:
+%% 1. no_specs is defined
+%% AND
+%% 2. use_specs is not defined
+-ifndef(no_specs).
+-ifndef(use_specs).
+-define(use_specs, true).
+-endif.
+-endif.
+
 %%--------------------------------------------------------------------------
 -ifdef(use_specs).
 -export_type([child_spec/0, startchild_ret/0, strategy/0, sup_name/0]).
