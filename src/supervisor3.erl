@@ -153,10 +153,17 @@
 -define(SET, set).
 
 -ifdef(use_specs).
+
+-ifdef(prior_17_otp).
+-type dynamics() :: ?DICT() | ?SET().
+-else.
+-type dynamics() :: ?DICT:?DICT() | ?SETS:?SET().
+-endif.
+
 -record(state, {name,
 		strategy               :: strategy(),
 		children = []          :: [child_rec()],
-		dynamics               :: ?DICT:?DICT() | ?SETS:?SET(),
+		dynamics               :: dynamics(),
 		intensity              :: non_neg_integer(),
 		period                 :: pos_integer(),
 		restarts = [],
