@@ -16,7 +16,6 @@
 
 -module(rabbit_misc).
 -include("rabbit.hrl").
--include("rabbit_framing.hrl").
 -include("rabbit_misc.hrl").
 
 -export([method_record_type/1, polite_pause/0, polite_pause/1]).
