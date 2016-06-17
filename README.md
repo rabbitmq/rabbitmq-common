@@ -41,7 +41,7 @@ perspective, it's an abnormal exit.
 6. Rename the module to supervisor3.
 
 7. Introduce post_init callback.
-If Callback:init/1 returns 'post_int', Callback:post_init/1 is called to perform the genuine initialization work.
+If Callback:init/1 returns 'post_init', Callback:post_init/1 is called to perform the genuine initialization work.
 This is to avoid crashes in Callback:init/1 which may prevent the parent supervisor from restarting it.
 
 8. Call os:timestamp/0 and timer:now_diff/2 for timestamps.
