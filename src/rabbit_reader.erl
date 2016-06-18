@@ -337,7 +337,7 @@ socket_op(Sock, Fun) ->
 start_connection(Parent, HelperSup, Deb, Sock) ->
     process_flag(trap_exit, true),
     Name = case rabbit_net:connection_string(Sock, inbound) of
-               {ok, Str}         -> Str;
+               {ok, Str}         -> list_to_binary(Str);
                {error, enotconn} -> rabbit_net:fast_close(Sock),
                                     exit(normal);
                {error, Reason}   -> socket_error(Reason),
@@ -349,11 +349,11 @@ start_connection(Parent, HelperSup, Deb, Sock) ->
     erlang:send_after(HandshakeTimeout, self(), handshake_timeout),
     {PeerHost, PeerPort, Host, Port} =
         socket_op(Sock, fun (S) -> rabbit_net:socket_ends(S, inbound) end),
-    ?store_proc_name(list_to_binary(Name)),
+    ?store_proc_name(Name),
     State = #v1{parent              = Parent,
                 sock                = Sock,
                 connection          = #connection{
-                  name               = list_to_binary(Name),
+                  name               = Name,
                   host               = Host,
                   peer_host          = PeerHost,
                   port               = Port,
@@ -387,10 +387,10 @@ start_connection(Parent, HelperSup, Deb, Sock) ->
              [Deb, [], 0, switch_callback(rabbit_event:init_stats_timer(
                                             State, #v1.stats_timer),
                                           handshake, 8)]}),
-        log(info, "closing AMQP connection ~p (~s)~n", [self(), Name])
+        log(info, "closing AMQP connection ~p (~s)~n", [self(), dynamic_connection_name(Name)])
     catch
         Ex ->
-          log_connection_exception(Name, Ex)
+          log_connection_exception(dynamic_connection_name(Name), Ex)
     after
         %% We don't call gen_tcp:close/1 here since it waits for
         %% pending output to be sent, which results in unnecessary
@@ -1134,7 +1134,7 @@ handle_method0(#'connection.start_ok'{mechanism = Mechanism,
                                       response = Response,
                                       client_properties = ClientProperties},
                State0 = #v1{connection_state = starting,
-                            connection       = Connection,
+                            connection       = Connection0,
                             sock             = Sock}) ->
     AuthMechanism = auth_mechanism_to_module(Mechanism, Sock),
     Capabilities =
@@ -1142,13 +1142,14 @@ handle_method0(#'connection.start_ok'{mechanism = Mechanism,
             {table, Capabilities1} -> Capabilities1;
             _                      -> []
         end,
+    Connection1 = Connection0#connection{
+                    client_properties = ClientProperties,
+                    capabilities      = Capabilities,
+                    auth_mechanism    = {Mechanism, AuthMechanism},
+                    auth_state        = AuthMechanism:init(Sock)},
+    Connection2 = augment_connection_name(Connection1),
     State = State0#v1{connection_state = securing,
-                      connection       =
-                          Connection#connection{
-                            client_properties = ClientProperties,
-                            capabilities      = Capabilities,
-                            auth_mechanism    = {Mechanism, AuthMechanism},
-                            auth_state        = AuthMechanism:init(Sock)}},
+                      connection       = Connection2},
     auth_phase(Response, State);
 
 handle_method0(#'connection.secure_ok'{response = Response},
@@ -1505,3 +1506,29 @@ send_error_on_channel0_and_close(Channel, Protocol, Reason, State) ->
     State1 = close_connection(terminate_channels(State)),
     ok = send_on_channel0(State#v1.sock, CloseMethod, Protocol),
     State1.
+
+augment_connection_name(#connection{client_properties = ClientProperties,
+                                    name = Name0} = Connection) ->
+    UserSpecifiedName = rabbit_misc:table_lookup(ClientProperties, <<"connection_name">>),
+    Name = add_user_specified_name(Name0, UserSpecifiedName),
+    case Name of
+        Name0 -> % not changed
+            Connection;
+        _ ->
+            log(info, "Setting custom name on AMQP connection ~p (~s)~n", [self(), Name]),
+            ?store_proc_name(Name),
+            Connection#connection{name = Name}
+    end.
+
+add_user_specified_name(Name, {longstr, UserSpecifiedName}) ->
+    <<Name/binary, " - ", UserSpecifiedName/binary>>;
+add_user_specified_name(Name, _) ->
+    Name.
+
+dynamic_connection_name(Default) ->
+    case rabbit_misc:get_proc_name() of
+        {ok, Name} ->
+            Name;
+        _ ->
+            Default
+    end.
