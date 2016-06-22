@@ -77,7 +77,8 @@
           gm_pids,                     %% transient
           decorators,                  %% transient, recalculated as above
           state,                       %% durable (have we crashed?)
-          policy_version}).
+          policy_version,
+          pending_slave_pids}).
 
 -record(exchange_serial, {name, next}).
 
