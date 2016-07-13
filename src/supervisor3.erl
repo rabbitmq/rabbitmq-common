@@ -106,7 +106,13 @@
 -type mfargs()   :: {M :: module(), F :: atom(), A :: [term()] | undefined}.
 -type modules()  :: [module()] | 'dynamic'.
 -type delay()    :: non_neg_integer().
--type restart()  :: 'permanent' | 'transient' | 'temporary' | 'intrinsic' | {'permanent', delay()} | {'transient', delay()} | {'intrinsic', delay()}.
+-type restart()  :: 'permanent'
+                  | 'transient'
+                  | 'temporary'
+                  | 'intrinsic'
+                  | {'permanent', delay()}
+                  | {'transient', delay()}
+                  | {'intrinsic', delay()}.
 -type shutdown() :: 'brutal_kill' | timeout().
 -type worker()   :: 'worker' | 'supervisor'.
 -type sup_name() :: {'local', Name :: atom()} | {'global', Name :: atom()}.
@@ -236,7 +242,7 @@ behaviour_info(_Other) ->
 -endif.
 start_link(Mod, Args) ->
     gen_server:start_link(?MODULE, {self, Mod, Args}, []).
- 
+
 -ifdef(use_specs).
 -spec start_link(SupName, Module, Args) -> startlink_ret() when
       SupName :: sup_name(),
@@ -245,7 +251,7 @@ start_link(Mod, Args) ->
 -endif.
 start_link(SupName, Mod, Args) ->
     gen_server:start_link(SupName, ?MODULE, {SupName, Mod, Args}, []).
- 
+
 %%% ---------------------------------------------------
 %%% Interface functions.
 %%% ---------------------------------------------------
@@ -364,9 +370,9 @@ cast(Supervisor, Req) ->
     gen_server:cast(Supervisor, Req).
 
 %%% ---------------------------------------------------
-%%% 
+%%%
 %%% Initialize the supervisor.
-%%% 
+%%%
 %%% ---------------------------------------------------
 -ifdef(use_specs).
 -type init_sup_name() :: sup_name() | 'self'.
@@ -479,12 +485,12 @@ do_start_child_i(M, F, A) ->
     end.
 
 %%% ---------------------------------------------------
-%%% 
+%%%
 %%% Callback functions.
-%%% 
+%%%
 %%% ---------------------------------------------------
 -ifdef(use_specs).
--type call() :: 'which_children' | 'count_children' | {_, _}.	% XXX: refine
+-type call() :: 'which_children' | 'count_children' | {_, _}.   % XXX: refine
 -spec handle_call(call(), term(), state()) -> {'reply', term(), state()}.
 -endif.
 handle_call({start_child, EArgs}, _From, State) when ?is_simple(State) ->
@@ -495,10 +501,12 @@ handle_call({start_child, EArgs}, _From, State) when ?is_simple(State) ->
 	{ok, undefined} when Child#child.restart_type =:= temporary ->
 	    {reply, {ok, undefined}, State};
 	{ok, Pid} ->
-	    NState = save_dynamic_child(Child#child.restart_type, Pid, Args, State),
+	    NState = save_dynamic_child(Child#child.restart_type, Pid, Args,
+                                        State),
 	    {reply, {ok, Pid}, NState};
 	{ok, Pid, Extra} ->
-	    NState = save_dynamic_child(Child#child.restart_type, Pid, Args, State),
+	    NState = save_dynamic_child(Child#child.restart_type, Pid, Args,
+                                        State),
 	    {reply, {ok, Pid, Extra}, NState};
 	What ->
 	    {reply, What, State}
@@ -513,7 +521,8 @@ handle_call({terminate_child, Name}, _From, State) ->
     case get_child(Name, State, ?is_simple(State)) of
 	{value, Child} ->
 	    case do_terminate(Child, State#state.name) of
-		#child{restart_type=RT} when RT=:=temporary; ?is_simple(State) ->
+		#child{restart_type=RT} when RT=:=temporary;
+                                             ?is_simple(State) ->
 		    {reply, ok, state_del_child(Child, State)};
 		NChild ->
 		    {reply, ok, replace_child(NChild, State)}
@@ -570,18 +579,21 @@ handle_call({delete_child, Name}, _From, State) ->
 	    {reply, {error, not_found}, State}
     end;
 
-handle_call(which_children, _From, #state{children = [#child{restart_type = temporary,
-							     child_type = CT,
-							     modules = Mods}]} =
-		State) when ?is_simple(State) ->
+handle_call(which_children, _From,
+            #state{children = [#child{restart_type = temporary,
+                                      child_type = CT,
+                                      modules = Mods}]} = State)
+  when ?is_simple(State) ->
     Reply = lists:map(fun(Pid) -> {undefined, Pid, CT, Mods} end,
-                      ?SETS:to_list(dynamics_db(temporary, State#state.dynamics))),
+                      ?SETS:to_list(dynamics_db(temporary,
+                                                State#state.dynamics))),
     {reply, Reply, State};
 
-handle_call(which_children, _From, #state{children = [#child{restart_type = RType,
-							 child_type = CT,
-							 modules = Mods}]} =
-		State) when ?is_simple(State) ->
+handle_call(which_children, _From,
+            #state{children = [#child{restart_type = RType,
+                                      child_type = CT,
+                                      modules = Mods}]} = State)
+  when ?is_simple(State) ->
     Reply = lists:map(fun({?restarting(_),_}) -> {undefined,restarting,CT,Mods};
 			 ({Pid, _}) -> {undefined, Pid, CT, Mods} end,
 		      ?DICT:to_list(dynamics_db(RType, State#state.dynamics))),
@@ -600,8 +612,9 @@ handle_call(which_children, _From, State) ->
     {reply, Resp, State};
 
 
-handle_call(count_children, _From, #state{children = [#child{restart_type = temporary,
-							     child_type = CT}]} = State)
+handle_call(count_children, _From,
+            #state{children = [#child{restart_type = temporary,
+                                      child_type = CT}]} = State)
   when ?is_simple(State) ->
     {Active, Count} =
 	?SETS:fold(fun(Pid, {Alive, Tot}) ->
@@ -619,8 +632,9 @@ handle_call(count_children, _From, #state{children = [#child{restart_type = temp
 	    end,
     {reply, Reply, State};
 
-handle_call(count_children, _From,  #state{children = [#child{restart_type = RType,
-							      child_type = CT}]} = State)
+handle_call(count_children, _From,
+            #state{children = [#child{restart_type = RType,
+                                      child_type = CT}]} = State)
   when ?is_simple(State) ->
     {Active, Count} =
 	?DICT:fold(fun(Pid, _Val, {Alive, Tot}) ->
@@ -744,7 +758,7 @@ handle_info({post_init, SupName, Mod, Args}, State0) ->
     end;
 
 handle_info(Msg, State) ->
-    error_logger:error_msg("Supervisor received unexpected message: ~p~n", 
+    error_logger:error_msg("Supervisor received unexpected message: ~p~n",
 			   [Msg]),
     {noreply, State}.
 
@@ -841,7 +855,7 @@ update_chsp(OldCh, Children) ->
 	NewC ->
 	    {ok, NewC}
     end.
-    
+
 %%% ---------------------------------------------------
 %%% Start a new child.
 %%% ---------------------------------------------------
@@ -855,7 +869,8 @@ handle_start_child(Child, State) ->
 		{ok, Pid} ->
 		    {{ok, Pid}, save_child(Child#child{pid = Pid}, State)};
 		{ok, Pid, Extra} ->
-		    {{ok, Pid, Extra}, save_child(Child#child{pid = Pid}, State)};
+		    {{ok, Pid, Extra},
+                     save_child(Child#child{pid = Pid}, State)};
 		{error, What} ->
 		    {{error, {What, Child}}, State}
 	    end;
@@ -870,9 +885,11 @@ handle_start_child(Child, State) ->
 %%% Returns: {ok, state()} | {shutdown, state()}
 %%% ---------------------------------------------------
 
-restart_child(Pid, Reason, #state{children = [Child]} = State) when ?is_simple(State) ->
+restart_child(Pid, Reason, #state{children = [Child]} = State)
+  when ?is_simple(State) ->
     RestartType = Child#child.restart_type,
-    case dynamic_child_args(Pid, dynamics_db(RestartType, State#state.dynamics)) of
+    case dynamic_child_args(Pid, dynamics_db(RestartType,
+                                             State#state.dynamics)) of
 	{ok, Args} ->
 	    {M, F, _} = Child#child.mfargs,
 	    NChild = Child#child{pid = Pid, mfargs = {M, F, Args}},
@@ -1029,7 +1046,8 @@ restart(one_for_one, Child, State) ->
 	    NState = replace_child(Child#child{pid = Pid}, State),
 	    {ok, NState};
 	{error, Reason} ->
-	    NState = replace_child(Child#child{pid = restarting(OldPid)}, State),
+	    NState = replace_child(Child#child{pid = restarting(OldPid)},
+                                   State),
 	    report_error(start_error, Reason, Child, State#state.name),
 	    {try_again, Reason, NState}
     end;
@@ -1073,7 +1091,8 @@ terminate_children(Children, SupName) ->
 %% be skipped when building the list of terminated children, although
 %% we do want them to be shut down as many functions from this module
 %% use this function to just clear everything.
-terminate_children([Child = #child{restart_type=temporary} | Children], SupName, Res) ->
+terminate_children([Child = #child{restart_type=temporary} | Children],
+                   SupName, Res) ->
     do_terminate(Child, SupName),
     terminate_children(Children, SupName, Res);
 terminate_children([Child | Children], SupName, Res) ->
@@ -1096,13 +1115,13 @@ do_terminate(Child, _SupName) ->
     Child#child{pid = undefined}.
 
 %%-----------------------------------------------------------------
-%% Shutdowns a child. We must check the EXIT value 
+%% Shutdowns a child. We must check the EXIT value
 %% of the child, because it might have died with another reason than
-%% the wanted. In that case we want to report the error. We put a 
-%% monitor on the child an check for the 'DOWN' message instead of 
-%% checking for the 'EXIT' message, because if we check the 'EXIT' 
-%% message a "naughty" child, who does unlink(Sup), could hang the 
-%% supervisor. 
+%% the wanted. In that case we want to report the error. We put a
+%% monitor on the child an check for the 'DOWN' message instead of
+%% checking for the 'EXIT' message, because if we check the 'EXIT'
+%% message a "naughty" child, who does unlink(Sup), could hang the
+%% supervisor.
 %% Returns: ok | {error, OtherReason}  (this should be reported)
 %%-----------------------------------------------------------------
 shutdown(Pid, brutal_kill) ->
@@ -1115,14 +1134,14 @@ shutdown(Pid, brutal_kill) ->
 		{'DOWN', _MRef, process, Pid, OtherReason} ->
 		    {error, OtherReason}
 	    end;
-	{error, Reason} ->      
+	{error, Reason} ->
 	    {error, Reason}
     end;
 shutdown(Pid, Time) ->
     case monitor_child(Pid) of
 	ok ->
 	    exit(Pid, shutdown), %% Try to shutdown gracefully
-	    receive 
+	    receive
 		{'DOWN', _MRef, process, Pid, shutdown} ->
 		    ok;
 		{'DOWN', _MRef, process, Pid, OtherReason} ->
@@ -1134,14 +1153,14 @@ shutdown(Pid, Time) ->
 			    {error, OtherReason}
 		    end
 	    end;
-	{error, Reason} ->      
+	{error, Reason} ->
 	    {error, Reason}
     end.
 
 %% Help function to shutdown/2 switches from link to monitor approach
 monitor_child(Pid) ->
-    
-    %% Do the monitor operation first so that if the child dies 
+
+    %% Do the monitor operation first so that if the child dies
     %% before the monitoring is done causing a 'DOWN'-message with
     %% reason noproc, we will get the real reason in the 'EXIT'-message
     %% unless a naughty child has already done unlink...
@@ -1151,19 +1170,19 @@ monitor_child(Pid) ->
     receive
 	%% If the child dies before the unlik we must empty
 	%% the mail-box of the 'EXIT'-message and the 'DOWN'-message.
-	{'EXIT', Pid, Reason} -> 
-	    receive 
+	{'EXIT', Pid, Reason} ->
+	    receive
 		{'DOWN', _, process, Pid, _} ->
 		    {error, Reason}
 	    end
-    after 0 -> 
+    after 0 ->
 	    %% If a naughty child did unlink and the child dies before
-	    %% monitor the result will be that shutdown/2 receives a 
+	    %% monitor the result will be that shutdown/2 receives a
 	    %% 'DOWN'-message with reason noproc.
 	    %% If the child should die after the unlink there
 	    %% will be a 'DOWN'-message with a correct reason
-	    %% that will be handled in shutdown/2. 
-	    ok   
+	    %% that will be handled in shutdown/2.
+	    ok
     end.
 
 
@@ -1279,15 +1298,19 @@ wait_dynamic_children(#child{restart_type=RType} = Child, Pids, Sz,
 %% it could become very costly as it is not uncommon to spawn
 %% very many such processes.
 save_child(#child{restart_type = temporary,
-		  mfargs = {M, F, _}} = Child, #state{children = Children} = State) ->
+		  mfargs = {M, F, _}} = Child,
+           #state{children = Children} = State) ->
     State#state{children = [Child#child{mfargs = {M, F, undefined}} |Children]};
 save_child(Child, #state{children = Children} = State) ->
     State#state{children = [Child |Children]}.
 
 save_dynamic_child(temporary, Pid, _, #state{dynamics = Dynamics} = State) ->
-    State#state{dynamics = ?SETS:add_element(Pid, dynamics_db(temporary, Dynamics))};
-save_dynamic_child(RestartType, Pid, Args, #state{dynamics = Dynamics} = State) ->
-    State#state{dynamics = ?DICT:store(Pid, Args, dynamics_db(RestartType, Dynamics))}.
+    State#state{dynamics = ?SETS:add_element(Pid,
+                                             dynamics_db(temporary, Dynamics))};
+save_dynamic_child(RestartType, Pid, Args,
+                   #state{dynamics = Dynamics} = State) ->
+    State#state{dynamics = ?DICT:store(Pid, Args,
+                                       dynamics_db(RestartType, Dynamics))}.
 
 dynamics_db(temporary, undefined) ->
     ?SETS:new();
@@ -1304,23 +1327,29 @@ dynamic_child_args(Pid, Dynamics) ->
             ?DICT:find(Pid, Dynamics)
     end.
 
-state_del_child(#child{pid = Pid, restart_type = temporary}, State) when ?is_simple(State) ->
-    NDynamics = ?SETS:del_element(Pid, dynamics_db(temporary, State#state.dynamics)),
+state_del_child(#child{pid = Pid, restart_type = temporary}, State)
+  when ?is_simple(State) ->
+    NDynamics = ?SETS:del_element(Pid, dynamics_db(temporary,
+                                                   State#state.dynamics)),
     State#state{dynamics = NDynamics};
-state_del_child(#child{pid = Pid, restart_type = RType}, State) when ?is_simple(State) ->
+state_del_child(#child{pid = Pid, restart_type = RType}, State)
+  when ?is_simple(State) ->
     NDynamics = ?DICT:erase(Pid, dynamics_db(RType, State#state.dynamics)),
     State#state{dynamics = NDynamics};
 state_del_child(Child, State) ->
     NChildren = del_child(Child#child.name, State#state.children),
     State#state{children = NChildren}.
 
-del_child(Name, [Ch=#child{pid = ?restarting(_)}|_]=Chs) when Ch#child.name =:= Name ->
+del_child(Name, [Ch=#child{pid = ?restarting(_)}|_]=Chs)
+  when Ch#child.name =:= Name ->
     Chs;
-del_child(Name, [Ch|Chs]) when Ch#child.name =:= Name, Ch#child.restart_type =:= temporary ->
+del_child(Name, [Ch|Chs]) when Ch#child.name =:= Name,
+                               Ch#child.restart_type =:= temporary ->
     Chs;
 del_child(Name, [Ch|Chs]) when Ch#child.name =:= Name ->
     [Ch#child{pid = undefined} | Chs];
-del_child(Pid, [Ch|Chs]) when Ch#child.pid =:= Pid, Ch#child.restart_type =:= temporary ->
+del_child(Pid, [Ch|Chs]) when Ch#child.pid =:= Pid,
+                              Ch#child.restart_type =:= temporary ->
     Chs;
 del_child(Pid, [Ch|Chs]) when Ch#child.pid =:= Pid ->
     [Ch#child{pid = undefined} | Chs];
@@ -1492,8 +1521,8 @@ validChildType(What) -> throw({invalid_child_type, What}).
 
 validName(_Name) -> true.
 
-validFunc({M, F, A}) when is_atom(M), 
-                          is_atom(F), 
+validFunc({M, F, A}) when is_atom(M),
+                          is_atom(F),
                           is_list(A) -> true;
 validFunc(Func)                      -> throw({invalid_mfa, Func}).
 
@@ -1511,7 +1540,7 @@ validDelay(Delay) when is_number(Delay),
                        Delay >= 0 -> true;
 validDelay(What)                  -> throw({invalid_delay, What}).
 
-validShutdown(Shutdown, _) 
+validShutdown(Shutdown, _)
   when is_integer(Shutdown), Shutdown > 0 -> true;
 validShutdown(infinity, _)             -> true;
 validShutdown(brutal_kill, _)          -> true;
