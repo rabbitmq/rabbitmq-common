@@ -7,4 +7,4 @@
 /doc/
 /ebin/
 .rebar/
-/rebar.lock
+_build

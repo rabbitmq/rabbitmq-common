@@ -1,7 +1,7 @@
 %% -*- mode:erlang -*-
 {application,supervisor3,
  [{description,"A copy of supervisor.erl from the R16B Erlang/OTP with modifications"},
-  {vsn,"1.1.2"},
+  {vsn,"1.1.3"},
   {registered,[]},
   {applications,[kernel,stdlib]},
   {env,[]},
@@ -9,5 +9,6 @@
   {maintainers, ["Shi Zaiming", "Ivan Dyachkov"]},
   {licenses, ["MPL"]},
   {links, [{"Github", "https://github.com/klarna/supervisor3"}]},
-  {build_tools, ["make", "rebar3"]},
-  {files, ["src", "README.md", "Makefile", "erlang.mk", "LICENSE", "LICENSE-MPL-RabbitMQ"]}]}.
+  {build_tools, ["make", "rebar", "rebar3"]},
+  {files, ["src", "README.md", "Makefile", "erlang.mk", "LICENSE", "LICENSE-MPL-RabbitMQ",
+           "rebar.config", "rebar.lock"]}]}.
