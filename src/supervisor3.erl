@@ -975,22 +975,44 @@ is_abnormal_termination({shutdown, _}) -> false;
 is_abnormal_termination(_Other)        -> true.
 
 do_restart_delay({RestartType, Delay}, Reason, Child, State) ->
-    IsCleanRetry = Reason =:= {?MODULE, delayed_restart},
-    case add_restart(State, IsCleanRetry) of
-        {ok, NState} ->
-            maybe_restart(NState#state.strategy, Child, NState);
-        {terminate, _NState} ->
-            %% we've reached the max restart intensity, but the
-            %% add_restart will have added to the restarts
-            %% field. Given we don't want to die here, we need to go
-            %% back to the old restarts field otherwise we'll never
-            %% attempt to restart later, which is why we ignore
-            %% NState for this clause.
-            _TRef = erlang:send_after(trunc(Delay*1000), self(),
-                                      {delayed_restart,
-                                       {{RestartType, Delay}, Reason, Child}}),
-            {ok, state_del_child(Child, State)}
-    end.
+  %% Reason =:= {?MODULE, delayed_restart} indicates
+  %% the first restart after delay (a clean retry)
+  %% do not add it to MaxR accumulation
+  IsCleanRetry = Reason =:= {?MODULE, delayed_restart},
+  case add_restart(State, IsCleanRetry) of
+    {ok, NState} ->
+      maybe_restart(NState#state.strategy, Child, NState);
+    {terminate, _NState} ->
+      %% we've reached the max restart intensity, but the
+      %% add_restart will have added to the restarts
+      %% field. Given we don't want to die here, we need to go
+      %% back to the old restarts field otherwise we'll never
+      %% attempt to restart later, which is why we ignore
+      %% NState for this clause.
+      _TRef = erlang:send_after(trunc(Delay*1000), self(),
+                                {delayed_restart,
+                                {{RestartType, Delay}, Reason, Child}}),
+      NState =
+        case ?is_simple(State) of
+          true ->
+            %% delete simple child, added back when restart
+            state_del_child(Child, State);
+          false ->
+            %% Do not delete (set pid = undefined) for non-simple ones
+            %% the ?restarting(_) state of the child should be kept.
+            %%
+            %% Otherwise, in case the child failed to start at delayed retry
+            %% (e.g. the process crashed in Module:init/1 which leads to
+            %%  a 'start_error' error in restart/3), an immediate
+            %% 'try_again_restart' loop back cast will be sent in
+            %% maybe_restart/3, then the 'handle_cast' callback
+            %% will fail to find the child in ?restarting state,
+            %% hence ignore the restart, which will in turn
+            %% cause it to enter a permanent zombie state.
+            State
+        end,
+      {ok, NState}
+  end.
 
 restart(Child, State) ->
     case add_restart(State) of

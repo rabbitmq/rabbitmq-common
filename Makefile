@@ -1,5 +1,5 @@
 PROJECT = supervisor3
-PROJECT_VERSION = 1.1.4
+PROJECT_VERSION = 1.1.5
 
 otp_release_prefix = $(shell erl -noshell -eval 'io:put_chars([hd(erlang:system_info(otp_release))]), init:stop()')
 
