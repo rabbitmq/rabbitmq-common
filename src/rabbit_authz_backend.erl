@@ -47,7 +47,7 @@
 %%     Something went wrong. Log and die.
 -callback check_vhost_access(rabbit_types:auth_user(),
                              rabbit_types:vhost(), rabbit_net:socket()) ->
-    boolean() | {'error', any()}.
+    boolean() | {'error', any()} | {'error_message', string()}.
 
 %% Given #auth_user, resource and permission, can a user access a resource?
 %%
@@ -59,7 +59,7 @@
 -callback check_resource_access(rabbit_types:auth_user(),
                                 rabbit_types:r(atom()),
                                 rabbit_access_control:permission_atom()) ->
-    boolean() | {'error', any()}.
+    boolean() | {'error', any()} | {'error_message', string()}.
 
 %% Given #auth_user, topic as resource, permission, and context, can a user access the topic?
 %%
@@ -72,5 +72,5 @@
     rabbit_types:r(atom()),
     rabbit_access_control:permission_atom(),
     rabbit_types:context()) ->
-    boolean() | {'error', any()}.
+    boolean() | {'error', any()} | {'error_message', string()}.
 
