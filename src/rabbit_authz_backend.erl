@@ -45,6 +45,8 @@
 %% false
 %% {error, Error}
 %%     Something went wrong. Log and die.
+%% {error_message, Message}
+%%     Report Message to a client using protocol error and die.
 -callback check_vhost_access(rabbit_types:auth_user(),
                              rabbit_types:vhost(), rabbit_net:socket()) ->
     boolean() | {'error', any()} | {'error_message', string()}.
@@ -56,6 +58,8 @@
 %% false
 %% {error, Error}
 %%     Something went wrong. Log and die.
+%% {error_message, Message}
+%%     Report Message to a client using protocol error and die.
 -callback check_resource_access(rabbit_types:auth_user(),
                                 rabbit_types:r(atom()),
                                 rabbit_access_control:permission_atom()) ->
@@ -68,6 +72,8 @@
 %% false
 %% {error, Error}
 %%     Something went wrong. Log and die.
+%% {error_message, Message}
+%%     Report Message to a client using protocol error and die.
 -callback check_topic_access(rabbit_types:auth_user(),
     rabbit_types:r(atom()),
     rabbit_access_control:permission_atom(),
