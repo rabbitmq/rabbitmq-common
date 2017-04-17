@@ -83,6 +83,85 @@
 
 -record(exchange_serial, {name, next}).
 
+-record(ch, {
+  %% starting | running | flow | closing
+  state,
+  %% same as reader's protocol. Used when instantiating
+  %% (protocol) exceptions.
+  protocol,
+  %% channel number
+  channel,
+  %% reader process
+  reader_pid,
+  %% writer process
+  writer_pid,
+  %%
+  conn_pid,
+  %% same as reader's name, see #v1.name
+  %% in rabbit_reader
+  conn_name,
+  %% limiter pid, see rabbit_limiter
+  limiter,
+  %% none | {Msgs, Acks} | committing | failed |
+  tx,
+  %% (consumer) delivery tag sequence
+  next_tag,
+  %% messages pending consumer acknowledgement
+  unacked_message_q,
+  %% same as #v1.user in the reader, used in
+  %% authorisation checks
+  user,
+  %% same as #v1.user in the reader
+  virtual_host,
+  %% when queue.bind's queue field is empty,
+  %% this name will be used instead
+  most_recently_declared_queue,
+  %% a dictionary of queue pid to queue name
+  queue_names,
+  %% queue processes are monitored to update
+  %% queue names
+  queue_monitors,
+  %% a dictionary of consumer tags to
+  %% consumer details: #amqqueue record, acknowledgement mode,
+  %% consumer exclusivity, etc
+  consumer_mapping,
+  %% a dictionary of queue pids to consumer tag lists
+  queue_consumers,
+  %% a set of pids of queues that have unacknowledged
+  %% deliveries
+  delivering_queues,
+  %% when a queue is declared as exclusive, queue
+  %% collector must be notified.
+  %% see rabbit_queue_collector for more info.
+  queue_collector_pid,
+  %% timer used to emit statistics
+  stats_timer,
+  %% are publisher confirms enabled for this channel?
+  confirm_enabled,
+  %% publisher confirm delivery tag sequence
+  publish_seqno,
+  %% a dtree used to track unconfirmed
+  %% (to publishers) messages
+  unconfirmed,
+  %% a list of tags for published messages that were
+  %% delivered but are yet to be confirmed to the client
+  confirmed,
+  %% a dtree used to track oustanding notifications
+  %% for messages published as mandatory
+  mandatory,
+  %% same as capabilities in the reader
+  capabilities,
+  %% tracing exchange resource if tracing is enabled,
+  %% 'none' otherwise
+  trace_state,
+  consumer_prefetch,
+  %% used by "one shot RPC" (amq.
+  reply_consumer,
+  %% flow | noflow, see rabbitmq-server#114
+  delivery_flow,
+  interceptor_state
+}).
+
 %% mnesia doesn't like unary records, so we add a dummy 'value' field
 -record(route, {binding, value = const}).
 -record(reverse_route, {reverse_binding, value = const}).
