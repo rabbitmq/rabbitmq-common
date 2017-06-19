@@ -4,7 +4,7 @@
 # source won't have to depend on Python and rabbitmq-codegen.
 
 BUILD_DEPS = rabbitmq_codegen
-TEST_DEPS = proper
+TEST_DEPS = proper amqp_client
 
 EXTRA_SOURCES += include/rabbit_framing.hrl				\
 		 src/rabbit_framing_amqp_0_8.erl			\
