@@ -128,19 +128,24 @@ get_memory_use(ratio) ->
 %% erlang:memory(total) under-reports memory usage by around 20%
 -spec get_process_memory() -> Bytes :: integer().
 get_process_memory() ->
+    ErlangTotal = erlang:memory(total),
     case get_memory_calculation_strategy() of
         rss ->
             case get_system_process_resident_memory() of
-                {ok, MemInBytes} ->
+                {ok, MemInBytes} when MemInBytes > ErlangTotal ->
                     MemInBytes;
+                %% When system RSS is less or equal
+                %% to memory reported by the erlang VM
+                {ok, _} ->
+                    ErlangTotal;
                 {error, Reason}  ->
                     rabbit_log:debug("Unable to get system memory used. Reason: ~p."
                                      " Falling back to erlang memory reporting",
                                      [Reason]),
-                    erlang:memory(total)
+                    ErlangTotal
             end;
         erlang ->
-            erlang:memory(total)
+            ErlangTotal
     end.
 
 -spec get_memory_calculation_strategy() -> rss | erlang.
