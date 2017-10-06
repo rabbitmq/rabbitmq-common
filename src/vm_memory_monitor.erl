@@ -161,7 +161,7 @@ get_memory_calculation_strategy() ->
               "Defaulting to 'rss'",
               [UnsupportedValue]
             ),
-            rss
+            allocated
     end.
 
 -spec get_system_process_resident_memory() -> {ok, Bytes :: integer()} | {error, term()}.
