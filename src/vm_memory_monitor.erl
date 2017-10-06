@@ -166,7 +166,7 @@ get_memory_calculation_strategy() ->
               "Defaulting to 'rss'",
               [UnsupportedValue]
             ),
-            rss
+            allocated
     end.
 
 %%----------------------------------------------------------------------------
