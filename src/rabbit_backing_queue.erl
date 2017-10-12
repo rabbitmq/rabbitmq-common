@@ -265,4 +265,6 @@
                             [ack()], Acc, state())
                            -> Acc.
 
+-callback handled_bump_reduce_memory_use(state()) -> state().
+
 info_keys() -> ?INFO_KEYS.
