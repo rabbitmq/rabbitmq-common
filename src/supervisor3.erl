@@ -134,8 +134,10 @@
 %%--------------------------------------------------------------------------
 
 -ifdef(use_specs).
+-type tref() :: reference().
+
 -record(child, {% pid is undefined when child is not running
-	        pid = undefined :: child() | {restarting,pid()} | [pid()],
+	        pid = undefined :: child() | {restarting,pid()} | {delayed_restart,tref()} | [pid()],
 		name            :: child_id(),
 		mfargs          :: mfargs(),
 		restart_type    :: restart(),
@@ -223,6 +225,7 @@ behaviour_info(_Other) ->
 
 -endif.
 -define(restarting(_Pid_), {restarting,_Pid_}).
+-define(delayed_restart(_TRef_), {delayed_restart,_TRef_}).
 
 %%% ---------------------------------------------------
 %%% This is a general process supervisor built upon gen_server.erl.
@@ -391,9 +394,9 @@ init({SupName, Mod, Args}) ->
     case Mod:init(Args) of
 	{ok, {SupFlags, StartSpec}} ->
 	    do_init(SupName, SupFlags, StartSpec, Mod, Args);
-  post_init ->
-      self() ! {post_init, SupName, Mod, Args},
-      {ok, #state{}};
+        post_init ->
+            self() ! {post_init, SupName, Mod, Args},
+            {ok, #state{}};
 	ignore ->
 	    ignore;
 	Error ->
@@ -560,6 +563,8 @@ handle_call({restart_child, Name}, _From, State) ->
 	    end;
 	{value, #child{pid=?restarting(_)}} ->
 	    {reply, {error, restarting}, State};
+        {value, #child{pid=?delayed_restart(_)}} ->
+            {reply, {error, restarting}, State};
 	{value, _} ->
 	    {reply, {error, running}, State};
 	_ ->
@@ -572,6 +577,8 @@ handle_call({delete_child, Name}, _From, State) ->
 	    NState = remove_child(Child, State),
 	    {reply, ok, NState};
 	{value, #child{pid=?restarting(_)}} ->
+	    {reply, {error, restarting}, State};
+	{value, #child{pid=?delayed_restart(_)}} ->
 	    {reply, {error, restarting}, State};
 	{value, _} ->
 	    {reply, {error, running}, State};
@@ -602,6 +609,9 @@ handle_call(which_children, _From,
 handle_call(which_children, _From, State) ->
     Resp =
 	lists:map(fun(#child{pid = ?restarting(_), name = Name,
+			     child_type = ChildType, modules = Mods}) ->
+			  {Name, restarting, ChildType, Mods};
+                     (#child{pid = ?delayed_restart(_), name = Name,
 			     child_type = ChildType, modules = Mods}) ->
 			  {Name, restarting, ChildType, Mods};
 		     (#child{pid = Pid, name = Name,
@@ -989,9 +999,9 @@ do_restart_delay({RestartType, Delay}, Reason, Child, State) ->
       %% back to the old restarts field otherwise we'll never
       %% attempt to restart later, which is why we ignore
       %% NState for this clause.
-      _TRef = erlang:send_after(trunc(Delay*1000), self(),
-                                {delayed_restart,
-                                {{RestartType, Delay}, Reason, Child}}),
+      TRef = erlang:send_after(trunc(Delay*1000), self(),
+                               {delayed_restart,
+                               {{RestartType, Delay}, Reason, Child}}),
       NState =
         case ?is_simple(State) of
           true ->
@@ -1009,7 +1019,7 @@ do_restart_delay({RestartType, Delay}, Reason, Child, State) ->
             %% will fail to find the child in ?restarting state,
             %% hence ignore the restart, which will in turn
             %% cause it to enter a permanent zombie state.
-            State
+            replace_child(Child#child{pid = ?delayed_restart(TRef)}, State)
         end,
       {ok, NState}
   end.
@@ -1132,6 +1142,9 @@ do_terminate(Child, SupName) when is_pid(Child#child.pid) ->
         {error, OtherReason} ->
             report_error(shutdown_error, OtherReason, Child, SupName)
     end,
+    Child#child{pid = undefined};
+do_terminate(Child = #child{pid = ?delayed_restart(TRef)}, _SupName) ->
+    erlang:cancel_timer(TRef),
     Child#child{pid = undefined};
 do_terminate(Child, _SupName) ->
     Child#child{pid = undefined}.
