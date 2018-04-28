@@ -16,6 +16,8 @@
 
 -module(rabbit_event).
 
+-ignore_xref([{gen_event, start_link, 2}]).
+
 -include("rabbit.hrl").
 
 -export([start_link/0]).
