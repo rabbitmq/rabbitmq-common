@@ -1653,14 +1653,14 @@ report_error(Error, Reason, Child, SupName) ->
 
 extract_child(Child) when is_list(Child#child.pid) ->
     [{nb_children, length(Child#child.pid)},
-     {name, Child#child.name},
+     {id, Child#child.name},
      {mfargs, Child#child.mfargs},
      {restart_type, Child#child.restart_type},
      {shutdown, Child#child.shutdown},
      {child_type, Child#child.child_type}];
 extract_child(Child) ->
     [{pid, Child#child.pid},
-     {name, Child#child.name},
+     {id, Child#child.name},
      {mfargs, Child#child.mfargs},
      {restart_type, Child#child.restart_type},
      {shutdown, Child#child.shutdown},
