@@ -86,6 +86,7 @@
 -export([report_default_thread_pool_size/0]).
 -export([get_gc_info/1]).
 -export([group_proplists_by/2]).
+-export([mnevis_transaction/1]).
 
 %% Horrible macro to use in guards
 -define(IS_BENIGN_EXIT(R),
@@ -568,33 +569,18 @@ execute_mnesia_transaction(TxFun) ->
     %% Making this a sync_transaction allows us to use dirty_read
     %% elsewhere and get a consistent result even when that read
     %% executes on a different node.
-    case worker_pool:submit(
-           fun () ->
-                   case mnesia:is_transaction() of
-                       false -> DiskLogBefore = mnesia_dumper:get_log_writes(),
-                                Res = mnesia:sync_transaction(TxFun),
-                                DiskLogAfter  = mnesia_dumper:get_log_writes(),
-                                case DiskLogAfter == DiskLogBefore of
-                                    true  -> file_handle_cache_stats:update(
-                                              mnesia_ram_tx),
-                                             Res;
-                                    false -> file_handle_cache_stats:update(
-                                              mnesia_disk_tx),
-                                             {sync, Res}
-                                end;
-                       true  -> mnesia:sync_transaction(TxFun)
-                   end
-           end, single) of
-        {sync, {atomic,  Result}} -> mnesia_sync:sync(), Result;
-        {sync, {aborted, Reason}} -> throw({error, Reason});
+    case mnevis_transaction(TxFun) of
         {atomic,  Result}         -> Result;
         {aborted, Reason}         -> throw({error, Reason})
     end.
 
+mnevis_transaction(TxFun) ->
+    mnevis:transaction(TxFun, [], infinity, [{wait_for_commit, true}]).
+
 %% Like execute_mnesia_transaction/1 with additional Pre- and Post-
 %% commit function
 execute_mnesia_transaction(TxFun, PrePostCommitFun) ->
-    case mnesia:is_transaction() of
+    case mnevis:is_transaction() of
         true  -> throw(unexpected_transaction);
         false -> ok
     end,
@@ -608,7 +594,7 @@ execute_mnesia_transaction(TxFun, PrePostCommitFun) ->
 %% Like execute_mnesia_transaction/2, but TxFun is expected to return a
 %% TailFun which gets called (only) immediately after the tx commit
 execute_mnesia_tx_with_tail(TxFun) ->
-    case mnesia:is_transaction() of
+    case mnevis:is_transaction() of
         true  -> execute_mnesia_transaction(TxFun);
         false -> TailFun = execute_mnesia_transaction(TxFun),
                  TailFun()

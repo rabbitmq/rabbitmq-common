@@ -36,6 +36,9 @@ ERLANG_MK_COMMIT = rabbitmq-tmp
 
 -include development.pre.mk
 
+BUILD_DEPS += mnevis
+dep_mnevis = git https://github.com/rabbitmq/mnevis.git master
+
 DEP_EARLY_PLUGINS = $(PROJECT)/mk/rabbitmq-early-test.mk
 DEP_PLUGINS = $(PROJECT)/mk/rabbitmq-build.mk \
 	      $(PROJECT)/mk/rabbitmq-hexpm.mk \
@@ -45,9 +48,10 @@ DEP_PLUGINS = $(PROJECT)/mk/rabbitmq-build.mk \
 
 WITHOUT = plugins/proper
 
-PLT_APPS += mnesia crypto ssl
+PLT_APPS += mnevis mnesia crypto ssl
 
 include mk/rabbitmq-components.mk
+
 include erlang.mk
 
 -include development.post.mk

@@ -451,18 +451,27 @@ id({Id, _, _, _, _, _}) -> Id.
 
 update_all(Overall, OldOverall) ->
     MatchHead = #mirrored_sup_childspec{mirroring_pid = OldOverall,
-                                        key           = '$1',
-                                        childspec     = '$2',
                                         _             = '_'},
+    % MatchHead = #mirrored_sup_childspec{mirroring_pid = OldOverall,
+    %                                     key           = '$1',
+    %                                     childspec     = '$2',
+    %                                     _             = '_'},
     [write(Group, Overall, C) ||
-        [{Group, _Id}, C] <- mnesia:select(?TABLE, [{MatchHead, [], ['$$']}])].
+        #mirrored_sup_childspec{key = {Group, _Id},
+                                childspec = C} <- mnesia:match_object(?TABLE, MatchHead, read)].
+    % [write(Group, Overall, C) ||
+        % [{Group, _Id}, C] <- mnesia:select(?TABLE, [{MatchHead, [], ['$$']}])].
 
 delete_all(Group) ->
     MatchHead = #mirrored_sup_childspec{key       = {Group, '_'},
-                                        childspec = '$1',
                                         _         = '_'},
+    % MatchHead = #mirrored_sup_childspec{key       = {Group, '_'},
+    %                                     childspec = '$1',
+    %                                     _         = '_'},
     [delete(Group, id(C)) ||
-        C <- mnesia:select(?TABLE, [{MatchHead, [], ['$1']}])].
+        #mirrored_sup_childspec{childspec = C} <- mnesia:match_object(?TABLE, MatchHead, read)].
+    % [delete(Group, id(C)) ||
+    %     C <- mnesia:select(?TABLE, [{MatchHead, [], ['$1']}])].
 
 errors(Results) -> [E || {error, E} <- Results].
 
@@ -473,7 +482,7 @@ create_tables() -> create_tables([?TABLE_DEF]).
 create_tables([]) ->
     ok;
 create_tables([{Table, Attributes} | Ts]) ->
-    case mnesia:create_table(Table, Attributes) of
+    case mnevis:create_table(Table, Attributes) of
         {atomic, ok}                        -> create_tables(Ts);
         {aborted, {already_exists, ?TABLE}} -> create_tables(Ts);
         Err                                 -> Err
