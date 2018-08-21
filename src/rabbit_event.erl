@@ -17,6 +17,7 @@
 -module(rabbit_event).
 
 -ignore_xref([{gen_event, start_link, 2}]).
+-dialyzer([{no_missing_calls, start_link/0}]).
 
 -include("rabbit.hrl").
 
