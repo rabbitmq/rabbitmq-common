@@ -168,9 +168,6 @@ $(if $(RABBITMQ_NODE_PORT),      {listeners$(COMMA) [$(RABBITMQ_NODE_PORT)]}$(CO
     ]},
   {rabbitmq_management, [
 $(if $(RABBITMQ_NODE_PORT),      {listener$(COMMA) [{port$(COMMA) $(shell echo "$$(($(RABBITMQ_NODE_PORT) + 10000))")}]},)
-    ]},
-  {ra, [
-      {data_dir, "$(NODE_TMPDIR)"}
     ]}
 ].
 endef
@@ -202,10 +199,7 @@ define test_rabbitmq_config_with_tls
             {fail_if_no_peer_cert, false},
             {honor_cipher_order, true}]}
         ]}
-  ]},
-  {ra, [
-      {data_dir, "$(NODE_TMPDIR)"}
-    ]}
+  ]}
 ].
 endef
 
@@ -322,7 +316,6 @@ start-brokers start-cluster:
 		  RABBITMQ_NODE_PORT="$$((5672 + $$n - 1))" \
 		  RABBITMQ_SERVER_START_ARGS=" \
 		  -rabbit loopback_users [] \
-		  -ra data_dir "$(NODE_TMPDIR)"
 		  -rabbitmq_management listener [{port,$$((15672 + $$n - 1))}] \
 		  "; \
 		if test '$@' = 'start-cluster' && test "$$nodename1"; then \
