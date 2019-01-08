@@ -3,10 +3,6 @@ PROJECT_DESCRIPTION = Modules shared by rabbitmq-server and rabbitmq-erlang-clie
 
 define PROJECT_APP_EXTRA_KEYS
 %% Hex.pm package informations.
-	{maintainers, [
-	    "RabbitMQ Team <info@rabbitmq.com>",
-	    "Jean-Sebastien Pedron <jean-sebastien@rabbitmq.com>"
-	  ]},
 	{licenses, ["MPL 1.1"]},
 	{links, [
 	    {"Website", "http://www.rabbitmq.com/"},
@@ -20,7 +16,7 @@ define PROJECT_APP_EXTRA_KEYS
 endef
 
 LOCAL_DEPS = compiler syntax_tools xmerl
-DEPS = lager jsx ranch ranch_proxy_protocol recon
+DEPS = lager jsx ranch recon
 
 # FIXME: Use erlang.mk patched for RabbitMQ, while waiting for PRs to be
 # reviewed and merged.
