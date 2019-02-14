@@ -84,6 +84,7 @@
 -export([report_default_thread_pool_size/0]).
 -export([get_gc_info/1]).
 -export([group_proplists_by/2]).
+-export([name_to_pid/1]).
 
 %% Horrible macro to use in guards
 -define(IS_BENIGN_EXIT(R),
@@ -266,6 +267,7 @@
 -spec get_gc_info(pid()) -> [any()].
 -spec group_proplists_by(fun((proplists:proplist()) -> any()),
                          list(proplists:proplist())) -> list(list(proplists:proplist())).
+-spec name_to_pid(rabbit_types:proc_type_and_name()) -> pid().
 
 
 %%----------------------------------------------------------------------------
