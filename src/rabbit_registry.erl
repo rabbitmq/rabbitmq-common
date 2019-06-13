@@ -138,6 +138,7 @@ class_module(runtime_parameter)   -> rabbit_runtime_parameter;
 class_module(exchange_decorator)  -> rabbit_exchange_decorator;
 class_module(queue_decorator)     -> rabbit_queue_decorator;
 class_module(policy_validator)    -> rabbit_policy_validator;
+class_module(policy_conflicts)    -> rabbit_policy_conflict_validator;
 class_module(operator_policy_validator) -> rabbit_policy_validator;
 class_module(policy_merge_strategy)     -> rabbit_policy_merge_strategy;
 class_module(ha_mode)                   -> rabbit_mirror_queue_mode;
