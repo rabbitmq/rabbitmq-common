@@ -10,27 +10,6 @@ endif
 # why ERL_LIBS may contain twice the path to Elixir libraries or
 # ERLC_OPTS may contain duplicated flags.
 
-# Add Elixir libraries to ERL_LIBS for testsuites.
-#
-# We replace the leading drive letter ("C:/") with an MSYS2-like path
-# ("/C/") for Windows. Otherwise, ERL_LIBS mixes `:` as a PATH separator
-# and a drive letter marker. This causes the Erlang VM to crash with
-# "Bad address".
-#
-# The space before `~r//` is apparently required. Otherwise, Elixir
-# complains with "unexpected token "~"".
-
-ifeq ($(origin ELIXIR_LIB_DIR),undefined)
-ELIXIR_LIB_DIR := $(shell elixir -e 'IO.puts(Regex.replace( ~r/^([a-zA-Z]):/, to_string(:code.lib_dir(:elixir)), "/\\1"))')
-export ELIXIR_LIB_DIR
-endif
-
-ifeq ($(ERL_LIBS),)
-ERL_LIBS := $(ELIXIR_LIB_DIR)
-else
-ERL_LIBS := $(ERL_LIBS):$(ELIXIR_LIB_DIR)
-endif
-
 TEST_ERLC_OPTS += +nowarn_export_all
 
 ifneq ($(PROJECT),rabbit_common)
@@ -43,11 +22,12 @@ endif
 LAGER_EXTRA_SINKS += rabbit_log \
 		     rabbit_log_channel \
 		     rabbit_log_connection \
+		     rabbit_log_federation \
 		     rabbit_log_ldap \
 		     rabbit_log_mirroring \
+		     rabbit_log_prelaunch \
 		     rabbit_log_queue \
 		     rabbit_log_ra \
-		     rabbit_log_federation \
 		     rabbit_log_shovel \
 		     rabbit_log_upgrade
 lager_extra_sinks = $(subst $(space),$(comma),$(LAGER_EXTRA_SINKS))
