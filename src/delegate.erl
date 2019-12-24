@@ -90,11 +90,23 @@ start_link(Name, Num) ->
     Name1 = delegate_name(Name, Num),
     gen_server2:start_link({local, Name1}, ?MODULE, [Name1], []).
 
+invoke(Pid, FunOrMFA = {gen_server2, _F, _A}) ->  %% optimisation
+    case safe_invoke(Pid, FunOrMFA) of
+        {ok,    _, Result} -> Result;
+        {error, _, {Class, Reason, StackTrace}}  -> 
+            erlang:raise(Class, Reason, StackTrace)
+    end;
 invoke(Pid, FunOrMFA) ->
     invoke(Pid, ?DEFAULT_NAME, FunOrMFA).
 
 invoke(Pid, _Name, FunOrMFA) when is_pid(Pid) andalso node(Pid) =:= node() ->
     apply1(FunOrMFA, Pid);
+invoke(Pid, ?DEFAULT_NAME, FunOrMFA = {gen_server2, _F, _A}) ->  %% optimisation
+    case safe_invoke(Pid, FunOrMFA) of
+        {ok,    _, Result} -> Result;
+        {error, _, {Class, Reason, StackTrace}}  -> 
+            erlang:raise(Class, Reason, StackTrace)
+    end;
 invoke(Pid, Name, FunOrMFA) when is_pid(Pid) ->
     case invoke([Pid], Name, FunOrMFA) of
         {[{Pid, Result}], []} ->
@@ -105,13 +117,24 @@ invoke(Pid, Name, FunOrMFA) when is_pid(Pid) ->
 
 invoke([], _Name, _FunOrMFA) -> %% optimisation
     {[], []};
+invoke([Pid], ?DEFAULT_NAME, FunOrMFA = {gen_server2, _F, _A}) -> %% optimisation
+    case safe_invoke(Pid, FunOrMFA) of
+        {ok,    _, Result} -> {[{Pid, Result}], []};
+        {error, _, Error}  -> {[], [{Pid, Error}]}
+    end;
 invoke([Pid], _Name, FunOrMFA) when node(Pid) =:= node() -> %% optimisation
     case safe_invoke(Pid, FunOrMFA) of
         {ok,    _, Result} -> {[{Pid, Result}], []};
         {error, _, Error}  -> {[], [{Pid, Error}]}
     end;
+invoke(Pids, Name = ?DEFAULT_NAME, FunOrMFA = {gen_server2, _F, _A}) when is_list(Pids) ->
+    {LocalCallPids, Grouped} = group_local_call_pids_by_node(Pids),
+    invoke(Pids, Name, FunOrMFA, LocalCallPids, Grouped);
 invoke(Pids, Name, FunOrMFA) when is_list(Pids) ->
     {LocalPids, Grouped} = group_pids_by_node(Pids),
+    invoke(Pids, Name, FunOrMFA, LocalPids, Grouped).
+
+invoke(Pids, Name, FunOrMFA, LocalCallPids, Grouped) when is_list(Pids) ->
     %% The use of multi_call is only safe because the timeout is
     %% infinity, and thus there is no process spawned in order to do
     %% the sending. Thus calls can't overtake preceding calls/casts.
@@ -125,7 +148,7 @@ invoke(Pids, Name, FunOrMFA) when is_list(Pids) ->
     BadPids = [{Pid, {exit, {nodedown, BadNode}, []}} ||
                   BadNode <- BadNodes,
                   Pid     <- maps:get(BadNode, Grouped)],
-    ResultsNoNode = lists:append([safe_invoke(LocalPids, FunOrMFA) |
+    ResultsNoNode = lists:append([safe_invoke(LocalCallPids, FunOrMFA) |
                                   [Results || {_Node, Results} <- Replies]]),
     lists:foldl(
       fun ({ok,    Pid, Result}, {Good, Bad}) -> {[{Pid, Result} | Good], Bad};
@@ -147,6 +170,9 @@ demonitor(Ref) when is_reference(Ref) ->
 demonitor({Name, Pid}) ->
     gen_server2:cast(Name, {demonitor, self(), Pid}).
 
+invoke_no_result(Pid, FunOrMFA = {gen_server2, _F, _A}) when is_pid(Pid) ->
+    _ = safe_invoke(Pid, FunOrMFA), %% we don't care about any error
+    ok;
 invoke_no_result(Pid, FunOrMFA) when is_pid(Pid) andalso node(Pid) =:= node() ->
     %% Optimization, avoids calling invoke_no_result/3.
     %%
@@ -167,6 +193,9 @@ invoke_no_result(Pid, FunOrMFA) when is_pid(Pid) ->
     ok;
 invoke_no_result([], _FunOrMFA) -> %% optimisation
     ok;
+invoke_no_result([Pid], FunOrMFA = {gen_server2, _F, _A}) -> %% optimisation
+    _ = safe_invoke(Pid, FunOrMFA), %% must not die
+    ok;
 invoke_no_result([Pid], FunOrMFA) when node(Pid) =:= node() -> %% optimisation
     _ = safe_invoke(Pid, FunOrMFA), %% must not die
     ok;
@@ -176,15 +205,21 @@ invoke_no_result([Pid], FunOrMFA) ->
                        {invoke, FunOrMFA,
                         maps:from_list([{RemoteNode, [Pid]}])}),
     ok;
+invoke_no_result(Pids, FunOrMFA = {gen_server2, _F, _A}) when is_list(Pids) ->
+    {LocalCallPids, Grouped} = group_local_call_pids_by_node(Pids),
+    invoke_no_result(Pids, FunOrMFA, LocalCallPids, Grouped);
 invoke_no_result(Pids, FunOrMFA) when is_list(Pids) ->
     {LocalPids, Grouped} = group_pids_by_node(Pids),
+    invoke_no_result(Pids, FunOrMFA, LocalPids, Grouped).
+
+invoke_no_result(Pids, FunOrMFA, LocalCallPids, Grouped) when is_list(Pids) ->
     case maps:keys(Grouped) of
         []          -> ok;
         RemoteNodes -> gen_server2:abcast(
                          RemoteNodes, delegate(self(), ?DEFAULT_NAME, RemoteNodes),
                          {invoke, FunOrMFA, Grouped})
     end,
-    _ = safe_invoke(LocalPids, FunOrMFA), %% must not die
+    _ = safe_invoke(LocalCallPids, FunOrMFA), %% must not die
     ok.
 
 %%----------------------------------------------------------------------------
@@ -199,6 +234,16 @@ group_pids_by_node(Pids) ->
                maps:update_with(
                  node(Pid), fun (List) -> [Pid | List] end, [Pid], Remote)}
       end, {[], maps:new()}, Pids).
+
+group_local_call_pids_by_node(Pids) ->
+    {LocalPids0, Grouped0} = group_pids_by_node(Pids),
+    maps:fold(fun(K, V, {AccIn, MapsIn}) -> 
+        case V of
+            %% just one Pid for the node
+            [S_v] -> {[S_v | AccIn], MapsIn};
+            _ -> {AccIn, maps:update_with(K, fun(V1) -> V1 end, V, MapsIn)}
+        end
+    end, {LocalPids0, maps:new()}, Grouped0).
 
 delegate_name(Name, Hash) ->
     list_to_atom(Name ++ integer_to_list(Hash)).
