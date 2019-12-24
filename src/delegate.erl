@@ -125,7 +125,7 @@ invoke(Pids, Name, FunOrMFA) when is_list(Pids) ->
     BadPids = [{Pid, {exit, {nodedown, BadNode}, []}} ||
                   BadNode <- BadNodes,
                   Pid     <- maps:get(BadNode, Grouped)],
-    ResultsNoNode = lists:append([safe_invoke(LocalPids, FunOrMFA) ,
+    ResultsNoNode = lists:append([safe_invoke(LocalPids, FunOrMFA) |
                                   [Results || {_Node, Results} <- Replies]]),
     lists:foldl(
       fun ({ok,    Pid, Result}, {Good, Bad}) -> {[{Pid, Result} | Good], Bad};
