@@ -86,6 +86,7 @@
 -export([report_default_thread_pool_size/0]).
 -export([get_gc_info/1]).
 -export([group_proplists_by/2]).
+-export([try_do/1, try_do/2]).
 
 %% Horrible macro to use in guards
 -define(IS_BENIGN_EXIT(R),
@@ -269,6 +270,8 @@
 -spec get_gc_info(pid()) -> [any()].
 -spec group_proplists_by(fun((proplists:proplist()) -> any()),
                          list(proplists:proplist())) -> list(list(proplists:proplist())).
+-spec try_do(thunk(A)) -> A.
+-spec try_do(thunk(A), thunk(A)) -> A.                        
 
 
 %%----------------------------------------------------------------------------
@@ -1415,6 +1418,22 @@ whereis_name(Name) ->
             end;
         [] -> undefined
     end.
+
+try_do(Thunk) ->
+    try 
+        Thunk()
+    catch _Class:_Reason:_Stacktrace ->
+        ok
+    end.
+
+try_do(ErrorHandler, Thunk) ->
+    try 
+        Thunk()
+    catch Class:Reason:Stacktrace ->
+        ErrorHandler({Class, Reason, Stacktrace})
+    end.
+
+
 
 %% End copypasta from gen_server2.erl
 %% -------------------------------------------------------------------------
