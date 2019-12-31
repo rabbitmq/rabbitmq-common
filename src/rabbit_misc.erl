@@ -1433,7 +1433,5 @@ try_do(ErrorHandler, Thunk) ->
         ErrorHandler({Class, Reason, Stacktrace})
     end.
 
-
-
 %% End copypasta from gen_server2.erl
 %% -------------------------------------------------------------------------
