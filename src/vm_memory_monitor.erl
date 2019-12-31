@@ -45,12 +45,18 @@
          get_process_memory/0,
          get_process_memory/1,
          get_memory_calculation_strategy/0,
-         get_rss_memory/0]).
+         get_rss_memory/0,
+         get_free_memory/0]).
 
 %% for tests
 -export([parse_line_linux/1, parse_mem_limit/1]).
 
 -define(SERVER, ?MODULE).
+
+-define(NEED_ALARM(State), 
+    ((State#state.process_memory  > State#state.memory_limit) orelse 
+    (is_integer(State#state.free_memory) andalso 
+    State#state.process_memory > State#state.free_memory))).
 
 -record(state, {total_memory,
                 memory_limit,
@@ -63,7 +69,8 @@
                 os_type = undefined,
                 os_pid  = undefined,
                 page_size = undefined,
-                proc_file = undefined}).
+                proc_file = undefined,
+                free_memory}).
 
 -include("rabbit_memory.hrl").
 
@@ -86,6 +93,7 @@
 -spec get_cached_process_memory_and_limit() -> {non_neg_integer(),
                                                 float() | infinity}.
 -spec get_rss_memory() -> non_neg_integer().
+-spec get_free_memory() -> (non_neg_integer() | 'unknown').
 
 -export_type([memory_calculation_strategy/0]).
 %%----------------------------------------------------------------------------
@@ -269,10 +277,11 @@ get_process_memory_uncached() ->
     TmpState = update_process_memory(init_state_by_os(#state{})),
     TmpState#state.process_memory.
 
-update_process_memory(State) ->
+update_process_memory(State = #state{os_type = OsType}) ->
     Strategy = get_memory_calculation_strategy(),
     {ok, ProcMem} = get_process_memory_using_strategy(Strategy, State),
-    State#state{process_memory = ProcMem}.
+    FreeMem = get_free_memory(OsType),
+    State#state{process_memory = ProcMem, free_memory = FreeMem}.
 
 init_state_by_os(State = #state{os_type = undefined}) ->
     OsType = os:type(),
@@ -404,23 +413,24 @@ parse_mem_limit(MemLimit) ->
 
 internal_update(State0 = #state{memory_limit = MemLimit,
                                 alarmed      = Alarmed,
-                                alarm_funs   = {AlarmSet, AlarmClear}}) ->
+                                alarm_funs   = {AlarmSet, AlarmClear},
+                                free_memory = FreeMem}) ->
     State1 = update_process_memory(State0),
     ProcMem = State1#state.process_memory,
-    NewAlarmed = ProcMem  > MemLimit,
+    NewAlarmed = ?NEED_ALARM(State1),
     case {Alarmed, NewAlarmed} of
-        {false, true} -> emit_update_info(set, ProcMem, MemLimit),
+        {false, true} -> emit_update_info(set, ProcMem, MemLimit, FreeMem),
                          AlarmSet({{resource_limit, memory, node()}, []});
-        {true, false} -> emit_update_info(clear, ProcMem, MemLimit),
+        {true, false} -> emit_update_info(clear, ProcMem, MemLimit, FreeMem),
                          AlarmClear({resource_limit, memory, node()});
         _             -> ok
     end,
     State1#state{alarmed = NewAlarmed}.
 
-emit_update_info(AlarmState, MemUsed, MemLimit) ->
+emit_update_info(AlarmState, MemUsed, MemLimit, FreeMem) ->
     rabbit_log:info(
-      "vm_memory_high_watermark ~p. Memory used:~p allowed:~p~n",
-      [AlarmState, MemUsed, MemLimit]).
+      "vm_memory_high_watermark ~p. Memory used:~p allowed:~p free:~p~n",
+      [AlarmState, MemUsed, MemLimit, FreeMem]).
 
 %% According to https://msdn.microsoft.com/en-us/library/aa366778(VS.85).aspx
 %% Windows has 2GB and 8TB of address space for 32 and 64 bit accordingly.
@@ -515,6 +525,22 @@ get_total_memory({unix, aix}) ->
     dict:fetch('memory pages', Dict) * 4096;
 
 get_total_memory(_OsType) ->
+    unknown.
+
+get_free_memory() ->
+    get_free_memory(os:type()).
+
+get_free_memory({unix, linux}) ->
+    GetFreeMem = fun() ->
+        File = read_proc_file("/proc/meminfo"),
+        Lines = string:tokens(File, "\n"),
+        Dict = dict:from_list(lists:map(fun parse_line_linux/1, Lines)),
+        dict:fetch('MemAvailable', Dict)
+    end,
+    ErrorHandler = fun(_Error) -> unknown end,
+    rabbit_misc:try_do(ErrorHandler, GetFreeMem);
+
+get_free_memory(_OsType) ->
     unknown.
 
 %% A line looks like "MemTotal:         502968 kB"
