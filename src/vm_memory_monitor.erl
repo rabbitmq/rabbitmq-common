@@ -612,4 +612,4 @@ read_proc_file(IoDevice, Acc) ->
     case file:read(IoDevice, ?BUFFER_SIZE) of
         {ok, Res} -> read_proc_file(IoDevice, [Res | Acc]);
         eof       -> Acc
-    end
+    end.
