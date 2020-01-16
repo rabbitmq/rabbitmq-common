@@ -22,6 +22,7 @@ endif
 LAGER_EXTRA_SINKS += rabbit_log \
 		     rabbit_log_channel \
 		     rabbit_log_connection \
+		     rabbit_log_feature_flags \
 		     rabbit_log_federation \
 		     rabbit_log_ldap \
 		     rabbit_log_mirroring \
