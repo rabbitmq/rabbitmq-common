@@ -112,6 +112,7 @@ get_context_after_reloading_env(Context) ->
              fun log_files/1,
              fun mnesia_dir/1,
              fun quorum_dir/1,
+             fun stream_dir/1,
              fun pid_file/1,
              fun feature_flags_file/1,
              fun plugins_dirs/1,
@@ -191,6 +192,7 @@ context_to_app_env_vars1(
   #{mnesia_dir := MnesiaDir,
     feature_flags_file := FFFile,
     quorum_queue_dir := QuorumQueueDir,
+    stream_queue_dir := StreamQueueDir,
     plugins_path := PluginsPath,
     plugins_expand_dir := PluginsExpandDir,
     enabled_plugins_file := EnabledPluginsFile} = Context,
@@ -207,6 +209,7 @@ context_to_app_env_vars1(
        {os_mon, start_memsup, false},
        {mnesia, dir, MnesiaDir},
        {ra, data_dir, QuorumQueueDir},
+       {osiris, data_dir, StreamQueueDir},
        {rabbit, feature_flags_file, FFFile},
        {rabbit, plugins_dir, PluginsPath},
        {rabbit, plugins_expand_dir, PluginsExpandDir},
@@ -742,6 +745,14 @@ get_quorum_queue_dir(#{mnesia_dir := MnesiaDir}) ->
     Dir = get_prefixed_env_var("RABBITMQ_QUORUM_DIR", Default),
     normalize_path(Dir).
 
+stream_dir(Context) ->
+    QuorumQueueDir = get_stream_queue_dir(Context),
+    Context#{stream_queue_dir => QuorumQueueDir}.
+
+get_stream_queue_dir(#{mnesia_dir := MnesiaDir}) ->
+    Default = filename:join(MnesiaDir, "stream"),
+    Dir = get_prefixed_env_var("RABBITMQ_STREAM_DIR", Default),
+    normalize_path(Dir).
 %% -------------------------------------------------------------------
 %%
 %% RABBITMQ_PID_FILE
