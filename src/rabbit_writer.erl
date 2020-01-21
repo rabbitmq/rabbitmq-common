@@ -442,5 +442,6 @@ maybe_gc_large_msg(Content, GCThreshold) ->
                          end),
     Size.
 
+msg_size(Data) when is_list(Data) orelse is_binary(Data) -> iolist_size(Data);
 msg_size(#content{payload_fragments_rev = PFR}) -> iolist_size(PFR);
 msg_size(#basic_message{content = Content})     -> msg_size(Content).
