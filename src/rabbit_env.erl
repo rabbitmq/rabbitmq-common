@@ -750,7 +750,7 @@ stream_dir(Context) ->
     Context#{stream_queue_dir => QuorumQueueDir}.
 
 get_stream_queue_dir(#{mnesia_dir := MnesiaDir}) ->
-    Default = filename:join(MnesiaDir, "stream"),
+    Default = filename:join(MnesiaDir, "streams"),
     Dir = get_prefixed_env_var("RABBITMQ_STREAM_DIR", Default),
     normalize_path(Dir).
 %% -------------------------------------------------------------------
