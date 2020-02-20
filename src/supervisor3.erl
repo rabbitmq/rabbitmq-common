@@ -172,11 +172,11 @@
 -endif.
 
 -record(state, {name,
-                strategy               :: strategy(),
+                strategy               :: strategy() | undefined,
                 children = []          :: [child_rec()],
-                dynamics               :: dynamics(),
-                intensity              :: non_neg_integer(),
-                period                 :: pos_integer(),
+                dynamics               :: dynamics() | undefined,
+                intensity              :: non_neg_integer() | undefined,
+                period                 :: pos_integer() | undefined,
                 restarts = [],
                 module,
                 args}).
