@@ -1,0 +1,32 @@
+# https://help.github.com/en/actions/configuring-and-managing-workflows/configuring-a-workflow
+name: Tests
+on: push
+jobs:
+  test:
+    # https://help.github.com/en/actions/reference/context-and-expression-syntax-for-github-actions#contexts
+    name: OTP ${{matrix.otp}}
+    runs-on: ubuntu-18.04
+    strategy:
+      matrix:
+        otp: [21.3, 22.2]
+    steps:
+      # https://github.com/marketplace/actions/checkout
+      - name: CHECKOUT REPOSITORY
+        uses: actions/checkout@v2
+      # https://github.com/marketplace/actions/setup-elixir
+      - name: CONFIGURE OTP & ELIXIR
+        uses: actions/setup-elixir@v1
+        with:
+          otp-version: ${{matrix.otp}}
+          # https://github.com/elixir-lang/elixir/releases
+          elixir-version: 1.10.2
+      - name: RUN TESTS
+        run: |
+          time make tests
+      - name: ON FAILURE, CAPTURE TESTS LOGS AS ARTIFACT
+        # https://github.com/marketplace/actions/upload-artifact
+        uses: actions/upload-artifact@v1
+        if: failure()
+        with:
+          name: tests-logs-OTPv${{matrix.otp}}
+          path: logs
