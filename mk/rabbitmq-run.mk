@@ -288,6 +288,7 @@ RMQCTL_WAIT_TIMEOUT ?= 60
 start-background-node: node-tmpdir $(DIST_TARGET)
 	$(BASIC_SCRIPT_ENV_SETTINGS) \
 	  RABBITMQ_NODE_ONLY=true \
+	  RABBITMQ_CONFIG_FILE=$(RABBITMQ_CONFIG_FILE) \
 	  $(RABBITMQ_SERVER) \
 	  $(REDIRECT_STDIO) &
 	ERL_LIBS="$(DIST_ERL_LIBS)" \
@@ -295,6 +296,7 @@ start-background-node: node-tmpdir $(DIST_TARGET)
 
 start-background-broker: node-tmpdir $(DIST_TARGET)
 	$(BASIC_SCRIPT_ENV_SETTINGS) \
+	  RABBITMQ_CONFIG_FILE=$(RABBITMQ_CONFIG_FILE) \
 	  $(RABBITMQ_SERVER) \
 	  $(REDIRECT_STDIO) &
 	ERL_LIBS="$(DIST_ERL_LIBS)" \
