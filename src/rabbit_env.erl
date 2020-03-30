@@ -1087,8 +1087,33 @@ enabled_plugins_file_from_env(Context) ->
             update_context(Context, enabled_plugins_file, File, environment)
     end.
 
-get_default_enabled_plugins_file(#{config_base_dir := ConfigBaseDir}) ->
-    filename:join(ConfigBaseDir, "enabled_plugins").
+get_default_enabled_plugins_file(#{os_type := {unix, _},
+                                   config_base_dir := ConfigBaseDir,
+                                   data_dir := DataDir}) ->
+    LegacyLocation = filename:join(ConfigBaseDir, "enabled_plugins"),
+    ModernLocation = filename:join(DataDir, "enabled_plugins"),
+    case {filelib:is_regular(ModernLocation),
+          file:read_file_info(LegacyLocation)} of
+        {false, {ok, #file_info{access = read_write}}} ->
+            rabbit_log_prelaunch:info("NOTICE: Using 'enabled_plugins' file"
+                                      " from ~p.", [LegacyLocation]),
+            rabbit_log_prelaunch:info("Please migrate this file to its new"
+                                      " location, ~p, as the old location is"
+                                      " deprecated.", [ModernLocation]),
+            LegacyLocation;
+        {false, _} ->
+            rabbit_log_prelaunch:info("NOTICE: An 'enabled_plugins' file was"
+                                      " found at ~p but was not writable and"
+                                      " will be ignored.", [LegacyLocation]),
+            rabbit_log_prelaunch:info("The file will instead be created at"
+                                      " ~p as the previos location is"
+                                      " deprecated.", [ModernLocation]),
+            ModernLocation;
+        _ ->
+            ModernLocation
+    end;
+get_default_enabled_plugins_file(#{data_dir := DataDir}) ->
+    filename:join(DataDir, "enabled_plugins").
 
 enabled_plugins_file_from_node(#{from_remote_node := Remote} = Context) ->
     Ret = query_remote(Remote,
