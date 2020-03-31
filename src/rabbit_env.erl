@@ -1090,24 +1090,25 @@ enabled_plugins_file_from_env(Context) ->
 get_default_enabled_plugins_file(#{os_type := {unix, _},
                                    config_base_dir := ConfigBaseDir,
                                    data_dir := DataDir}) ->
-    LegacyLocation = filename:join(ConfigBaseDir, "enabled_plugins"),
     ModernLocation = filename:join(DataDir, "enabled_plugins"),
+    LegacyLocation = filename:join(ConfigBaseDir, "enabled_plugins"),
     case {filelib:is_regular(ModernLocation),
           file:read_file_info(LegacyLocation)} of
         {false, {ok, #file_info{access = read_write}}} ->
             rabbit_log_prelaunch:info("NOTICE: Using 'enabled_plugins' file"
-                                      " from ~p.", [LegacyLocation]),
-            rabbit_log_prelaunch:info("Please migrate this file to its new"
-                                      " location, ~p, as the old location is"
-                                      " deprecated.", [ModernLocation]),
+                                      " from ~p. Please migrate this file"
+                                      " to its new location, ~p, as the"
+                                      " previous location is deprecated.",
+                                      [LegacyLocation, ModernLocation]),
             LegacyLocation;
-        {false, _} ->
+        {false, {ok, #file_info{access = read}}} ->
+            {ok, _} = file:copy(LegacyLocation, ModernLocation),
             rabbit_log_prelaunch:info("NOTICE: An 'enabled_plugins' file was"
-                                      " found at ~p but was not writable and"
-                                      " will be ignored.", [LegacyLocation]),
-            rabbit_log_prelaunch:info("The file will instead be created at"
-                                      " ~p as the previos location is"
-                                      " deprecated.", [ModernLocation]),
+                                      " found at ~p but was not read and"
+                                      " writable. It has been copied to its"
+                                      " new location at ~p and any changes"
+                                      " to plugin status will be reflected"
+                                      " there.", [LegacyLocation, ModernLocation]),
             ModernLocation;
         _ ->
             ModernLocation
