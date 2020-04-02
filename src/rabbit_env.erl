@@ -1080,41 +1080,11 @@ enabled_plugins_file(Context) ->
 enabled_plugins_file_from_env(Context) ->
     case get_prefixed_env_var("RABBITMQ_ENABLED_PLUGINS_FILE") of
         false ->
-            File = get_default_enabled_plugins_file(Context),
-            update_context(Context, enabled_plugins_file, File, default);
+            update_context(Context, enabled_plugins_file, undefined, default);
         Value ->
             File = normalize_path(Value),
             update_context(Context, enabled_plugins_file, File, environment)
     end.
-
-get_default_enabled_plugins_file(#{os_type := {unix, _},
-                                   config_base_dir := ConfigBaseDir,
-                                   data_dir := DataDir}) ->
-    ModernLocation = filename:join(DataDir, "enabled_plugins"),
-    LegacyLocation = filename:join(ConfigBaseDir, "enabled_plugins"),
-    case {filelib:is_regular(ModernLocation),
-          file:read_file_info(LegacyLocation)} of
-        {false, {ok, #file_info{access = read_write}}} ->
-            rabbit_log_prelaunch:info("NOTICE: Using 'enabled_plugins' file"
-                                      " from ~p. Please migrate this file"
-                                      " to its new location, ~p, as the"
-                                      " previous location is deprecated.",
-                                      [LegacyLocation, ModernLocation]),
-            LegacyLocation;
-        {false, {ok, #file_info{access = read}}} ->
-            {ok, _} = file:copy(LegacyLocation, ModernLocation),
-            rabbit_log_prelaunch:info("NOTICE: An 'enabled_plugins' file was"
-                                      " found at ~p but was not read and"
-                                      " writable. It has been copied to its"
-                                      " new location at ~p and any changes"
-                                      " to plugin status will be reflected"
-                                      " there.", [LegacyLocation, ModernLocation]),
-            ModernLocation;
-        _ ->
-            ModernLocation
-    end;
-get_default_enabled_plugins_file(#{data_dir := DataDir}) ->
-    filename:join(DataDir, "enabled_plugins").
 
 enabled_plugins_file_from_node(#{from_remote_node := Remote} = Context) ->
     Ret = query_remote(Remote,
@@ -1497,7 +1467,7 @@ do_load_conf_env_file(Context, Sh, ConfEnvFile) ->
            {"CONFIG_FILE", MainConfigFile},
            {"ADVANCED_CONFIG_FILE", get_default_advanced_config_file(Context)},
            {"MNESIA_BASE", get_default_mnesia_base_dir(Context)},
-           {"ENABLED_PLUGINS_FILE", get_default_enabled_plugins_file(Context)},
+           {"ENABLED_PLUGINS_FILE", false},
            {"PLUGINS_DIR", get_default_plugins_path_from_env(Context)},
            {"CONF_ENV_FILE_PHASE", "rabbtimq-prelaunch"}
           ],

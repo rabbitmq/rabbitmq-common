@@ -21,7 +21,6 @@
 /sbin/
 /sbin.lock
 /test/ct.cover.spec
-/test/*_SUITE_data/
 /xrefr
 
 /rabbit_common.d

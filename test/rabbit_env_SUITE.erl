@@ -18,14 +18,53 @@
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("eunit/include/eunit.hrl").
--include_lib("kernel/include/file.hrl").
 
--compile(export_all).
+-export([all/0,
+         suite/0,
+         groups/0,
+         init_per_group/2,
+         end_per_group/2,
+         init_per_testcase/2,
+         end_per_testcase/2,
+         check_data_dir/1,
+         check_default_values/1,
+         check_values_from_reachable_remote_node/1,
+         check_values_from_offline_remote_node/1,
+         check_context_to_app_env_vars/1,
+         check_context_to_code_path/1,
+         check_RABBITMQ_ADVANCED_CONFIG_FILE/1,
+         check_RABBITMQ_CONFIG_FILE/1,
+         check_RABBITMQ_CONFIG_FILES/1,
+         check_RABBITMQ_DIST_PORT/1,
+         check_RABBITMQ_ENABLED_PLUGINS/1,
+         check_RABBITMQ_ENABLED_PLUGINS_FILE/1,
+         check_RABBITMQ_FEATURE_FLAGS_FILE/1,
+         check_RABBITMQ_KEEP_PID_FILE_ON_EXIT/1,
+         check_RABBITMQ_LOG/1,
+         check_RABBITMQ_LOG_BASE/1,
+         check_RABBITMQ_LOGS/1,
+         check_RABBITMQ_MNESIA_BASE/1,
+         check_RABBITMQ_MNESIA_DIR/1,
+         check_RABBITMQ_MOTD_FILE/1,
+         check_RABBITMQ_NODE_IP_ADDRESS/1,
+         check_RABBITMQ_NODE_PORT/1,
+         check_RABBITMQ_NODENAME/1,
+         check_RABBITMQ_PID_FILE/1,
+         check_RABBITMQ_PLUGINS_DIR/1,
+         check_RABBITMQ_PLUGINS_EXPAND_DIR/1,
+         check_RABBITMQ_PRODUCT_NAME/1,
+         check_RABBITMQ_PRODUCT_VERSION/1,
+         check_RABBITMQ_QUORUM_DIR/1,
+         check_RABBITMQ_UPGRADE_LOG/1,
+         check_RABBITMQ_USE_LOGNAME/1,
+         check_value_is_yes/1,
+         check_log_process_env/1,
+         check_log_context/1
+        ]).
 
 all() ->
     [
-     {group, main_tests},
-     {group, enabled_plugins_file_tests}
+     {group, main_tests}
     ].
 
 suite() ->
@@ -68,52 +107,14 @@ groups() ->
                        check_value_is_yes,
                        check_log_process_env,
                        check_log_context
-                      ]},
-     {enabled_plugins_file_tests, [], [
-                                       check_enabled_plugins_file_normal,
-                                       check_enabled_plugins_file_legacy,
-                                       check_enabled_plugins_file_copy
-                                      ]}
+                      ]}
     ].
 
-init_per_group(enabled_plugins_file_tests, Config) ->
-    case os:type() of
-        {unix, _} ->
-            DataDir = proplists:get_value(data_dir, Config),
-            true = os:putenv("SYS_PREFIX", DataDir),
-            RabbitConfigBaseDir = filename:join([DataDir, "etc", "rabbitmq"]),
-            LegacyFile = filename:join(RabbitConfigBaseDir, "enabled_plugins"),
-            ok = delete_if_present(LegacyFile),
-            ok = filelib:ensure_dir(LegacyFile),
-            RabbitDataDir = filename:join([DataDir, "var", "lib", "rabbitmq"]),
-            ModernFile = filename:join(RabbitDataDir, "enabled_plugins"),
-            ok = delete_if_present(ModernFile),
-            ok = filelib:ensure_dir(ModernFile),
-            [{rabbit_config_base_dir, RabbitConfigBaseDir},
-             {rabbit_data_dir, RabbitDataDir} | Config];
-        _ ->
-            {skip, "enabled_plugins_file fallback behavior does not apply to Windows"}
-    end;
-init_per_group(_, Config) ->
-    Config.
+init_per_group(_, Config) -> Config.
+end_per_group(_, Config) -> Config.
 
-end_per_group(enabled_plugins_file_tests, Config) ->
-    true = os:unsetenv("SYS_PREFIX"),
-    Config;
-end_per_group(_, Config) ->
-    Config.
-
-init_per_testcase(check_enabled_plugins_file_normal, Config) ->
-    Config;
-init_per_testcase(check_enabled_plugins_file_legacy, Config) ->
-    create_enabled_plugins_file(Config, 8#600);
-init_per_testcase(check_enabled_plugins_file_copy, Config) ->
-    create_enabled_plugins_file(Config, 8#400);
-init_per_testcase(_, Config) ->
-    Config.
-
-end_per_testcase(_, Config) ->
-    Config.
+init_per_testcase(_, Config) -> Config.
+end_per_testcase(_, Config) -> Config.
 
 check_data_dir(_) ->
     {Variable, ExpValue} = case os:type() of
@@ -204,7 +205,7 @@ check_default_values(_) ->
          dbg_mods => [],
          dbg_output => stdout,
          enabled_plugins => undefined,
-         enabled_plugins_file => "/var/lib/rabbitmq/enabled_plugins",
+         enabled_plugins_file => undefined,
          erlang_dist_tcp_port => 25672,
          feature_flags_file =>
            "/var/lib/rabbitmq/mnesia/" ++ NodeS ++ "-feature_flags",
@@ -251,7 +252,7 @@ check_default_values(_) ->
          dbg_mods => [],
          dbg_output => stdout,
          enabled_plugins => undefined,
-         enabled_plugins_file => "%APPDATA%/RabbitMQ/enabled_plugins",
+         enabled_plugins_file => undefined,
          erlang_dist_tcp_port => 25672,
          feature_flags_file =>
            "%APPDATA%/RabbitMQ/db/" ++ NodeS ++ "-feature_flags",
@@ -987,40 +988,6 @@ check_prefixed_variable("RABBITMQ_" ++ Variable = PrefixedVariable,
             ?assertMatch(#{Key := DefaultValue}, Context)
     end.
 
-check_enabled_plugins_file_normal(Config) ->
-    DataDir = proplists:get_value(rabbit_data_dir, Config),
-    ConfigBaseDir = proplists:get_value(rabbit_config_base_dir, Config),
-    false = filelib:is_regular(filename:join(DataDir, "enabled_plugins")),
-    false = filelib:is_regular(filename:join(ConfigBaseDir, "enabled_plugins")),
-
-    ?assertEqual(filename:join(DataDir, "enabled_plugins"),
-                 maps:get(enabled_plugins_file, rabbit_env:get_context())).
-
-check_enabled_plugins_file_legacy(Config) ->
-    DataDir = proplists:get_value(rabbit_data_dir, Config),
-    ConfigBaseDir = proplists:get_value(rabbit_config_base_dir, Config),
-    false = filelib:is_regular(filename:join(DataDir, "enabled_plugins")),
-    {ok, #file_info{access = read_write}} = file:read_file_info(
-                                              filename:join(ConfigBaseDir,
-                                                            "enabled_plugins")),
-
-    ?assertEqual(filename:join(ConfigBaseDir, "enabled_plugins"),
-                 maps:get(enabled_plugins_file, rabbit_env:get_context())).
-
-check_enabled_plugins_file_copy(Config) ->
-    DataDir = proplists:get_value(rabbit_data_dir, Config),
-    ConfigBaseDir = proplists:get_value(rabbit_config_base_dir, Config),
-    ExpectedLocation = filename:join(DataDir, "enabled_plugins"),
-    false = filelib:is_regular(ExpectedLocation),
-    {ok, #file_info{access = read}} = file:read_file_info(
-                                        filename:join(ConfigBaseDir,
-                                                      "enabled_plugins")),
-
-    ?assertEqual(ExpectedLocation,
-                 maps:get(enabled_plugins_file, rabbit_env:get_context())),
-    {ok, File} = file:read_file(ExpectedLocation),
-    ?assertEqual("[rabbitmq_management].", unicode:characters_to_list(File)).
-
 random_int()    -> rand:uniform(50000).
 random_string() -> integer_to_list(random_int()).
 random_atom()   -> list_to_atom(random_string()).
@@ -1033,21 +1000,3 @@ get_default_nodename() ->
               "rabbit@\\1",
               [{return, list}]),
     list_to_atom(NodeS).
-
-create_enabled_plugins_file(Config, Perm) ->
-    RabbitConfigBaseDir = proplists:get_value(rabbit_config_base_dir, Config),
-    EnabledPluginsFile = filename:join(RabbitConfigBaseDir, "enabled_plugins"),
-    FileContent = io_lib:format("[rabbitmq_management].", []),
-    ok = file:write_file(EnabledPluginsFile, FileContent),
-    ok = file:change_mode(EnabledPluginsFile, Perm),
-    [{enabled_plugins_file, EnabledPluginsFile} | Config].
-
-delete_if_present(Filename) ->
-    case file:read_file_info(Filename) of
-        {ok, #file_info{type = regular}} ->
-            file:delete(Filename);
-        {ok, _} ->
-            {error, not_regular_file};
-        _ ->
-            ok
-    end.
