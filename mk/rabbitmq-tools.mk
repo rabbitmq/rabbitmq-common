@@ -42,7 +42,7 @@ update-erlang-mk: erlang-mk
 		fi; \
 	done
 
-rabbitmq-server-tested-deps.mk:
+deps/rabbitmq-server-tested-deps.mk:
 	$(verbose) (cd $(DEPS_DIR)/amqp_client && echo "dep_amqp_client = git https://github.com/rabbitmq/rabbitmq-erlang-client.git $$(git rev-parse HEAD)") >> $@
 	$(verbose) (cd $(DEPS_DIR)/rabbitmq_cli && echo "dep_rabbitmq_cli = git https://github.com/rabbitmq/rabbitmq-cli.git $$(git rev-parse HEAD)") >> $@
 	$(verbose) (cd $(DEPS_DIR)/rabbitmq_codegen && echo "dep_rabbitmq_codegen = git https://github.com/rabbitmq/rabbitmq-codegen.git $$(git rev-parse HEAD)") >> $@
