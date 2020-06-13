@@ -48,6 +48,7 @@
           ok_val_or_error([{stat_option(), integer()}]).
 -spec recv(socket()) ->
           {'data', [char()] | binary()} |
+          'passive' |
           'closed' |
           rabbit_types:error(any()) |
           {'other', any()}.
@@ -123,13 +124,14 @@ getstat({rabbit_proxy_socket, Sock, _}, Stats) when is_port(Sock) ->
     inet:getstat(Sock, Stats).
 
 recv(Sock) when ?IS_SSL(Sock) ->
-    recv(Sock, {ssl, ssl_closed, ssl_error});
+    recv(Sock, {ssl, ssl_closed, ssl_error, ssl_passive});
 recv(Sock) when is_port(Sock) ->
-    recv(Sock, {tcp, tcp_closed, tcp_error}).
+    recv(Sock, {tcp, tcp_closed, tcp_error, tcp_passive}).
 
-recv(S, {DataTag, ClosedTag, ErrorTag}) ->
+recv(S, {DataTag, ClosedTag, ErrorTag, PassiveTag}) ->
     receive
         {DataTag, S, Data}    -> {data, Data};
+        {PassiveTag, S} -> passive;
         {ClosedTag, S}        -> closed;
         {ErrorTag, S, Reason} -> {error, Reason};
         Other                 -> {other, Other}
