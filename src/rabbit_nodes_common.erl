@@ -30,6 +30,11 @@
 -spec diagnostics([node()]) -> string().
 -spec cookie_hash() -> string().
 
+%% net_adm:name/1 returns a new value, 'noport', in Erlang 24. This value being
+%% absent in the function spec in previous versions of Erlang, we get a warning
+%% from Dialyzer until we start to the yet-to-be-release Erlang 24 in CI.
+%% Therefore we disable this specific warning.
+-dialyzer({nowarn_function, diagnostics_node/1}).
 
 names(Hostname) ->
     Self = self(),
@@ -72,14 +77,7 @@ epmd_port() ->
     end.
 
 ensure_epmd() ->
-    {ok, [[Prog]]} = init:get_argument(progname),
-    Exe = os:find_executable(Prog),
-    do_ensure_epmd(Exe, Prog).
-
-do_ensure_epmd(false, Prog) ->
-    Path = os:getenv("PATH"),
-    rabbit_log:error("ensure_epmd: unable to find executable '~s' in PATH: '~s'", [Prog, Path]);
-do_ensure_epmd(Exe, _) ->
+    Exe = rabbit_runtime:get_erl_path(),
     ID = rabbit_misc:random(1000000000),
     Port = open_port(
              {spawn_executable, Exe},
@@ -129,6 +127,10 @@ diagnostics_node(Node) ->
          {error, Reason} ->
              [{"  * unable to connect to epmd (port ~s) on ~s: ~s~n",
                [epmd_port(), Host, rabbit_misc:format_inet_error(Reason)]}];
+         noport ->
+             [{"  * unable to connect to epmd (port ~s) on ~s: "
+               "couldn't resolve hostname~n",
+               [epmd_port(), Host]}];
          {ok, NamePorts} ->
              [{"  * connected to epmd (port ~s) on ~s",
                [epmd_port(), Host]}] ++
