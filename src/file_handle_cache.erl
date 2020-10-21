@@ -317,18 +317,18 @@ open_with_absolute_path(Path, Mode, Options) ->
                                        false -> RCount
                                    end,
                          HasWriter1 = HasWriter orelse IsWriter,
-                         put({Path, fhc_file},
-                             File1 #file { reader_count = RCount1,
-                                           has_writer = HasWriter1 }),
+                         K = {Path, fhc_file},
+                         V = File1#file{reader_count = RCount1, has_writer = HasWriter1},
+                         put_pdict(K, V),
                          {ok, Ref};
                      Error ->
-                         erase({Ref, fhc_handle}),
+                         erase_pdict({Ref, fhc_handle}),
                          Error
                  end
     end.
 
 close(Ref) ->
-    case erase({Ref, fhc_handle}) of
+    case erase_pdict({Ref, fhc_handle}) of
         undefined -> ok;
         Handle    -> case hard_close(Handle) of
                          ok               -> ok;
@@ -504,7 +504,7 @@ copy(Src, Dest, Count) ->
       end).
 
 delete(Ref) ->
-    case erase({Ref, fhc_handle}) of
+    case erase_pdict({Ref, fhc_handle}) of
         undefined ->
             ok;
         Handle = #handle { path = Path } ->
@@ -615,11 +615,31 @@ clear_process_read_cache() ->
     [
      begin
          Handle1 = reset_read_buffer(Handle),
-         put({Ref, fhc_handle}, Handle1)
+         put_pdict({Ref, fhc_handle}, Handle1)
      end ||
         {{Ref, fhc_handle}, Handle} <- get(),
         size(Handle#handle.read_buffer) > 0
     ].
+
+put_pdict(Key, Value) ->
+    case application:get_env(rabbit, fhc_debug_log) of
+        true ->
+            case Value of
+                undefined ->
+                    rabbit_log:debug("~p pid: ~p put Key: ~p Value: UNDEFINED", [?MODULE, self(), Key]);
+                _ ->
+                    rabbit_log:debug("~p pid: ~p put Key: ~p", [?MODULE, self(), Key])
+            end;
+        _ -> ok
+    end,
+    put(Key, Value).
+
+erase_pdict(Key) ->
+    case application:get_env(rabbit, fhc_debug_log) of
+        true -> rabbit_log:debug("~p pid: ~p erase Key: ~p", [?MODULE, self(), Key]);
+        _ -> ok
+    end,
+    erase(Key).
 
 %%----------------------------------------------------------------------------
 %% Internal functions
@@ -744,7 +764,7 @@ reopen([{Ref, NewOrReopen, Handle = #handle { hdl          = closed,
                                      Handle#handle{hdl              = Hdl,
                                                    offset           = 0,
                                                    last_used_at     = Now})),
-            put({Ref, fhc_handle}, Handle1),
+            put_pdict({Ref, fhc_handle}, Handle1),
             reopen(RefNewOrReopenHdls, gb_trees:insert({Now, Ref}, true, Tree),
                    [{Ref, Handle1} | RefHdls]);
         Error ->
@@ -776,7 +796,7 @@ sort_handles([{Ref, _} | RefHdls], RefHdlsA, [{Ref, Handle} | RefHdlsB], Acc) ->
 put_handle(Ref, Handle = #handle { last_used_at = Then }) ->
     Now = erlang:monotonic_time(),
     age_tree_update(Then, Now, Ref),
-    put({Ref, fhc_handle}, Handle #handle { last_used_at = Now }).
+    put_pdict({Ref, fhc_handle}, Handle #handle { last_used_at = Now }).
 
 with_age_tree(Fun) -> put_age_tree(Fun(get_age_tree())).
 
@@ -786,7 +806,7 @@ get_age_tree() ->
         AgeTree   -> AgeTree
     end.
 
-put_age_tree(Tree) -> put(fhc_age_tree, Tree).
+put_age_tree(Tree) -> put_pdict(fhc_age_tree, Tree).
 
 age_tree_update(Then, Now, Ref) ->
     with_age_tree(
@@ -843,32 +863,32 @@ new_closed_handle(Path, Mode, Options) ->
                 end
         end,
     Ref = make_ref(),
-    put({Ref, fhc_handle}, #handle { hdl                     = closed,
-                                     ref                     = Ref,
-                                     offset                  = 0,
-                                     is_dirty                = false,
-                                     write_buffer_size       = 0,
-                                     write_buffer_size_limit = WriteBufferSize,
-                                     write_buffer            = [],
-                                     read_buffer             = <<>>,
-                                     read_buffer_pos         = 0,
-                                     read_buffer_rem         = 0,
-                                     read_buffer_size        = ReadBufferSize,
-                                     read_buffer_size_limit  = ReadBufferSize,
-                                     read_buffer_usage       = 0,
-                                     at_eof                  = false,
-                                     path                    = Path,
-                                     mode                    = Mode,
-                                     options                 = Options,
-                                     is_write                = is_writer(Mode),
-                                     is_read                 = is_reader(Mode),
-                                     last_used_at            = undefined }),
+    put_pdict({Ref, fhc_handle}, #handle { hdl                     = closed,
+                                           ref                     = Ref,
+                                           offset                  = 0,
+                                           is_dirty                = false,
+                                           write_buffer_size       = 0,
+                                           write_buffer_size_limit = WriteBufferSize,
+                                           write_buffer            = [],
+                                           read_buffer             = <<>>,
+                                           read_buffer_pos         = 0,
+                                           read_buffer_rem         = 0,
+                                           read_buffer_size        = ReadBufferSize,
+                                           read_buffer_size_limit  = ReadBufferSize,
+                                           read_buffer_usage       = 0,
+                                           at_eof                  = false,
+                                           path                    = Path,
+                                           mode                    = Mode,
+                                           options                 = Options,
+                                           is_write                = is_writer(Mode),
+                                           is_read                 = is_reader(Mode),
+                                           last_used_at            = undefined }),
     {ok, Ref}.
 
 soft_close(Ref, Handle) ->
     {Res, Handle1} = soft_close(Handle),
     case Res of
-        ok -> put({Ref, fhc_handle}, Handle1),
+        ok -> put_pdict({Ref, fhc_handle}, Handle1),
               true;
         _  -> put_handle(Ref, Handle1),
               false
@@ -907,8 +927,8 @@ hard_close(Handle) ->
                       end,
             HasWriter1 = HasWriter andalso not IsWriter,
             case RCount1 =:= 0 andalso not HasWriter1 of
-                true  -> erase({Path, fhc_file});
-                false -> put({Path, fhc_file},
+                true  -> erase_pdict({Path, fhc_file});
+                false -> put_pdict({Path, fhc_file},
                              File #file { reader_count = RCount1,
                                           has_writer = HasWriter1 })
             end,
@@ -1040,7 +1060,7 @@ reduce_read_cache(MemToFree, SparedRefs) ->
               Freed;
           ({Ref, #handle{read_buffer = Buf} = Handle}, Freed) ->
               Handle1 = reset_read_buffer(Handle),
-              put({Ref, fhc_handle}, Handle1),
+              put_pdict({Ref, fhc_handle}, Handle1),
               Freed + size(Buf)
       end, 0, Handles),
     if
