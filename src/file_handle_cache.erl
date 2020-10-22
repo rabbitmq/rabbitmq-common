@@ -300,7 +300,7 @@ open(Path, Mode, Options) ->
 
 open_with_absolute_path(Path, Mode, Options) ->
     File1 = #file { reader_count = RCount, has_writer = HasWriter } =
-        case get({Path, fhc_file}) of
+        case get_pdict({Path, fhc_file}) of
             File = #file {} -> File;
             undefined       -> #file { reader_count = 0,
                                        has_writer = false }
@@ -447,7 +447,7 @@ sync(Ref) ->
 
 needs_sync(Ref) ->
     %% This must *not* use with_handles/2; see bug 25052
-    case get({Ref, fhc_handle}) of
+    case get_pdict({Ref, fhc_handle}) of
         #handle { is_dirty = false, write_buffer = [] } -> false;
         #handle {}                                      -> true
     end.
@@ -549,7 +549,7 @@ set_maximum_since_use(MaximumAge) ->
                    end;
                (_KeyValuePair, Rep) ->
                    Rep
-           end, false, get()) of
+           end, false, get_pdict()) of
         false -> age_tree_change(), ok;
         true  -> ok
     end.
@@ -617,28 +617,29 @@ clear_process_read_cache() ->
          Handle1 = reset_read_buffer(Handle),
          put_pdict({Ref, fhc_handle}, Handle1)
      end ||
-        {{Ref, fhc_handle}, Handle} <- get(),
+        {{Ref, fhc_handle}, Handle} <- get_pdict(),
         size(Handle#handle.read_buffer) > 0
     ].
 
+get_pdict() ->
+    rabbit_log:debug("~p pid: ~p get ENTIRE process dict", [?MODULE, self()]),
+    get().
+
+get_pdict(Key) ->
+    rabbit_log:debug("~p pid: ~p get Key: ~p", [?MODULE, self(), Key]),
+    get(Key).
+
 put_pdict(Key, Value) ->
-    case application:get_env(rabbit, fhc_debug_log) of
-        true ->
-            case Value of
-                undefined ->
-                    rabbit_log:debug("~p pid: ~p put Key: ~p Value: UNDEFINED", [?MODULE, self(), Key]);
-                _ ->
-                    rabbit_log:debug("~p pid: ~p put Key: ~p", [?MODULE, self(), Key])
-            end;
-        _ -> ok
+    case Value of
+        undefined ->
+            rabbit_log:debug("~p pid: ~p put Key: ~p Value: UNDEFINED", [?MODULE, self(), Key]);
+        _ ->
+            rabbit_log:debug("~p pid: ~p put Key: ~p", [?MODULE, self(), Key])
     end,
     put(Key, Value).
 
 erase_pdict(Key) ->
-    case application:get_env(rabbit, fhc_debug_log) of
-        true -> rabbit_log:debug("~p pid: ~p erase Key: ~p", [?MODULE, self(), Key]);
-        _ -> ok
-    end,
+    rabbit_log:debug("~p pid: ~p erase Key: ~p", [?MODULE, self(), Key]),
     erase(Key).
 
 %%----------------------------------------------------------------------------
@@ -734,7 +735,7 @@ get_or_reopen(RefNewOrReopens) ->
                 close ->
                     [soft_close(Ref, Handle) ||
                         {{Ref, fhc_handle}, Handle = #handle { hdl = Hdl }} <-
-                            get(),
+                            get_pdict(),
                         Hdl =/= closed],
                     get_or_reopen(RefNewOrReopens)
             end
@@ -778,7 +779,7 @@ reopen([{Ref, NewOrReopen, Handle = #handle { hdl          = closed,
 partition_handles(RefNewOrReopens) ->
     lists:foldr(
       fun ({Ref, NewOrReopen}, {Open, Closed}) ->
-              case get({Ref, fhc_handle}) of
+              case get_pdict({Ref, fhc_handle}) of
                   #handle { hdl = closed } = Handle ->
                       {Open, [{Ref, NewOrReopen, Handle} | Closed]};
                   #handle {} = Handle ->
@@ -801,7 +802,7 @@ put_handle(Ref, Handle = #handle { last_used_at = Then }) ->
 with_age_tree(Fun) -> put_age_tree(Fun(get_age_tree())).
 
 get_age_tree() ->
-    case get(fhc_age_tree) of
+    case get_pdict(fhc_age_tree) of
         undefined -> gb_trees:empty();
         AgeTree   -> AgeTree
     end.
@@ -920,7 +921,7 @@ hard_close(Handle) ->
         {ok, #handle { path = Path,
                        is_read = IsReader, is_write = IsWriter }} ->
             #file { reader_count = RCount, has_writer = HasWriter } = File =
-                get({Path, fhc_file}),
+                get_pdict({Path, fhc_file}),
             RCount1 = case IsReader of
                           true  -> RCount - 1;
                           false -> RCount
@@ -1051,7 +1052,7 @@ maybe_reduce_read_cache(SparedRefs) ->
 reduce_read_cache(MemToFree, SparedRefs) ->
     Handles = lists:sort(
       fun({_, H1}, {_, H2}) -> H1 < H2 end,
-      [{R, H} || {{R, fhc_handle}, H} <- get(),
+      [{R, H} || {{R, fhc_handle}, H} <- get_pdict(),
                  not lists:member(R, SparedRefs)
                  andalso size(H#handle.read_buffer) > 0]),
     FreedMem = lists:foldl(
