@@ -626,8 +626,19 @@ get_pdict() ->
     get().
 
 get_pdict(Key) ->
-    rabbit_log:debug("~p pid: ~p get Key: ~p", [?MODULE, self(), Key]),
-    get(Key).
+    case get(Key) of
+        undefined ->
+            rabbit_log:debug("~p pid: ~p get Key: ~p returned UNDEFINED", [?MODULE, self(), Key]),
+            try
+                throw(kaboom)
+            catch _:_:Stack ->
+                rabbit_log:debug("~p pid: ~p call stack: ~p", [?MODULE, self(), Stack])
+            end,
+            undefined;
+        Value ->
+            rabbit_log:debug("~p pid: ~p get Key: ~p", [?MODULE, self(), Key]),
+            Value
+    end.
 
 put_pdict(Key, Value) ->
     case Value of
