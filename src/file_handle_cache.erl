@@ -630,38 +630,38 @@ get_pdict(fhc_age_tree=Key) ->
 get_pdict(Key) ->
     handle_get_pdict(Key, get(Key)).
 
-handle_get_pdict(Key, undefined) ->
-    rabbit_log:debug("~p pid: ~p get Key: ~p returned UNDEFINED", [?MODULE, self(), Key]),
-    try
-        throw(get_pdict_undefined)
-    catch _:_:Stack ->
-        rabbit_log:debug("~p pid: ~p call stack: ~p", [?MODULE, self(), Stack])
-    end,
+handle_get_pdict(_Key, undefined) ->
+    %% rabbit_log:debug("~p pid: ~p get Key: ~p returned UNDEFINED", [?MODULE, self(), Key]),
+    %% try
+    %%     throw(get_pdict_undefined)
+    %% catch _:_:Stack ->
+    %%     rabbit_log:debug("~p pid: ~p call stack: ~p", [?MODULE, self(), Stack])
+    %% end,
     undefined;
-handle_get_pdict(Key, Value) ->
-    rabbit_log:debug("~p pid: ~p get Key: ~p", [?MODULE, self(), Key]),
+handle_get_pdict(_Key, Value) ->
+    %% rabbit_log:debug("~p pid: ~p get Key: ~p", [?MODULE, self(), Key]),
     Value.
 
 put_pdict(fhc_age_tree=Key, Value) ->
     put(Key, Value);
 put_pdict(Key, Value) ->
-    rabbit_log:debug("~p pid: ~p put Key: ~p Value: ~p", [?MODULE, self(), Key, Value]),
-    try
-        throw(put_pdict_undefined)
-    catch _:_:Stack ->
-        rabbit_log:debug("~p pid: ~p put call stack: ~p", [?MODULE, self(), Stack])
-    end,
+    %% rabbit_log:debug("~p pid: ~p put Key: ~p Value: ~p", [?MODULE, self(), Key, Value]),
+    %% try
+    %%     throw(put_pdict_undefined)
+    %% catch _:_:Stack ->
+    %%     rabbit_log:debug("~p pid: ~p put call stack: ~p", [?MODULE, self(), Stack])
+    %% end,
     put(Key, Value).
 
 erase_pdict(fhc_age_tree=Key) ->
     erase(Key);
 erase_pdict(Key) ->
-    rabbit_log:debug("~p pid: ~p erase Key: ~p", [?MODULE, self(), Key]),
-    try
-        throw(erase_pdict)
-    catch _:_:Stack ->
-        rabbit_log:debug("~p pid: ~p erase call stack: ~p", [?MODULE, self(), Stack])
-    end,
+    %% rabbit_log:debug("~p pid: ~p erase Key: ~p", [?MODULE, self(), Key]),
+    %% try
+    %%     throw(erase_pdict)
+    %% catch _:_:Stack ->
+    %%     rabbit_log:debug("~p pid: ~p erase call stack: ~p", [?MODULE, self(), Stack])
+    %% end,
     erase(Key).
 
 %%----------------------------------------------------------------------------
