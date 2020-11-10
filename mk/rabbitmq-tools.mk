@@ -383,7 +383,6 @@ $(CT_LOGS_ARCHIVE):
 	done
 	$(verbose) \
 	$(TAR) -c \
-	  --exclude "*/mnesia" \
 	  --transform "s/^logs/$(patsubst %.tar.xz,%,$(notdir $(CT_LOGS_ARCHIVE)))/" \
 	  -f - logs | \
         xz > "$@"
