@@ -1,17 +1,8 @@
-%% The contents of this file are subject to the Mozilla Public License
-%% Version 1.1 (the "License"); you may not use this file except in
-%% compliance with the License. You may obtain a copy of the License
-%% at https://www.mozilla.org/MPL/
+%% This Source Code Form is subject to the terms of the Mozilla Public
+%% License, v. 2.0. If a copy of the MPL was not distributed with this
+%% file, You can obtain one at https://mozilla.org/MPL/2.0/.
 %%
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and
-%% limitations under the License.
-%%
-%% The Original Code is RabbitMQ.
-%%
-%% The Initial Developer of the Original Code is Pivotal Software, Inc.
-%% Copyright (c) 2007-2018 Pivotal Software, Inc.  All rights reserved.
+%% Copyright (c) 2007-2020 VMware, Inc. or its affiliates.  All rights reserved.
 %%
 
 -include("resource.hrl").
@@ -26,35 +17,11 @@
                     tags,
                     impl}).
 
-%% Implementation for the internal auth backend
--record(internal_user, {
-    username,
-    password_hash,
-    tags,
-    %% password hashing implementation module,
-    %% typically rabbit_password_hashing_* but can
-    %% come from a plugin
-    hashing_algorithm}).
 -record(permission, {configure, write, read}).
 -record(user_vhost, {username, virtual_host}).
 -record(user_permission, {user_vhost, permission}).
 -record(topic_permission_key, {user_vhost, exchange}).
 -record(topic_permission, {topic_permission_key, permission}).
-
-%% Represents a vhost.
-%%
-%% Historically this record had 2 arguments although the 2nd
-%% was never used (`dummy`, always undefined). This is because
-%% single field records were/are illegal in OTP.
-%%
-%% As of 3.6.x, the second argument is vhost limits,
-%% which is actually used and has the same default.
-%% Nonetheless, this required a migration, see rabbit_upgrade_functions.
--record(vhost, {
-          %% vhost name as a binary
-          virtual_host,
-          %% proplist of limits configured, if any
-          limits}).
 
 %% Client connection, used by rabbit_reader
 %% and related modules.
@@ -167,7 +134,7 @@
                  version,          %% string()
                  description,      %% string()
                  type,             %% 'ez' or 'dir'
-                 dependencies,     %% [{atom(), string()}]
+                 dependencies,     %% [atom()]
                  location,         %% string()
                  %% List of supported broker version ranges,
                  %% e.g. ["3.5.7", "3.6.1"]
@@ -182,13 +149,21 @@
 
 %% used to track connections across virtual hosts
 %% so that limits can be enforced
--record(tracked_connection_per_vhost,
-    {vhost, connection_count}).
+-record(tracked_connection_per_vhost, {
+    vhost,
+    connection_count}).
+
+%% Used to track connections per user
+%% so that limits can be enforced
+-record(tracked_connection_per_user, {
+    user,
+    connection_count
+    }).
 
 %% Used to track detailed information
 %% about connections.
 -record(tracked_connection, {
-          %% {Node, Name}
+          %% {Node, ConnectionName}
           id,
           node,
           vhost,
@@ -206,12 +181,35 @@
           connected_at
          }).
 
+%% Used to track channels per user
+%% so that limits can be enforced
+-record(tracked_channel_per_user, {
+    user,
+    channel_count
+    }).
+
+%% Used to track detailed information
+%% about channels.
+-record(tracked_channel, {
+            %% {Node, ChannelName}
+            id,
+            node,
+            vhost,
+            name,
+            pid,
+            username,
+            connection}).
+
+%% Indicates maintenance state of a node
+-record(node_maintenance_state, {
+          node,
+          status = regular,
+          context = #{}
+        }).
 %%----------------------------------------------------------------------------
 
--define(COPYRIGHT_MESSAGE, "Copyright (C) 2007-2019 Pivotal Software, Inc.").
--define(INFORMATION_MESSAGE, "Licensed under the MPL.  See https://www.rabbitmq.com/").
--define(OTP_MINIMUM, "21.3").
--define(ERTS_MINIMUM, "10.3").
+-define(COPYRIGHT_MESSAGE, "Copyright (c) 2007-2020 VMware, Inc. or its affiliates.").
+-define(INFORMATION_MESSAGE, "Licensed under the MPL 2.0. Website: https://rabbitmq.com").
 
 %% EMPTY_FRAME_SIZE, 8 = 1 + 2 + 4 + 1
 %%  - 1 byte of frame type
@@ -227,6 +225,8 @@
         rabbit_misc:get_env(rabbit, supervisor_shutdown_timeout, infinity)).
 -define(WORKER_WAIT,
         rabbit_misc:get_env(rabbit, worker_shutdown_timeout, 30000)).
+-define(MSG_STORE_WORKER_WAIT,
+        rabbit_misc:get_env(rabbit, msg_store_shutdown_timeout, 600000)).
 
 -define(HIBERNATE_AFTER_MIN,        1000).
 -define(DESIRED_HIBERNATE,         10000).
@@ -261,3 +261,7 @@
 %% Store metadata in the trace files when message tracing is enabled.
 -define(LG_INFO(Info), is_pid(whereis(lg)) andalso (lg ! Info)).
 -define(LG_PROCESS_TYPE(Type), ?LG_INFO(#{process_type => Type})).
+
+%% Execution timeout of connection and channel tracking operations
+-define(TRACKING_EXECUTION_TIMEOUT,
+        rabbit_misc:get_env(rabbit, tracking_execution_timeout, 5000)).

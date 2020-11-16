@@ -1,20 +1,14 @@
-%% The contents of this file are subject to the Mozilla Public License
-%% Version 1.1 (the "License"); you may not use this file except in
-%% compliance with the License. You may obtain a copy of the License at
-%% https://www.mozilla.org/MPL/
+%% This Source Code Form is subject to the terms of the Mozilla Public
+%% License, v. 2.0. If a copy of the MPL was not distributed with this
+%% file, You can obtain one at https://mozilla.org/MPL/2.0/.
 %%
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See the
-%% License for the specific language governing rights and limitations
-%% under the License.
-%%
-%% The Original Code is RabbitMQ.
-%%
-%% The Initial Developer of the Original Code is GoPivotal, Inc.
-%% Copyright (c) 2011-2015 Pivotal Software, Inc.  All rights reserved.
+%% Copyright (c) 2011-2020 VMware, Inc. or its affiliates.  All rights reserved.
 %%
 
 -module(mirrored_supervisor).
+
+%% pg2 is deprecated in OTP 23.
+-compile(nowarn_deprecated_function).
 
 %% Mirrored Supervisor
 %% ===================
@@ -155,10 +149,10 @@
 %%--------------------------------------------------------------------------
 
 -callback init(Args :: term()) ->
-    {ok, {{RestartStrategy :: supervisor2:strategy(),
+    {ok, {{RestartStrategy :: ?SUPERVISOR:strategy(),
            MaxR :: non_neg_integer(),
            MaxT :: non_neg_integer()},
-           [ChildSpec :: supervisor2:child_spec()]}}
+           [ChildSpec :: ?SUPERVISOR:child_spec()]}}
     | ignore.
 
 %%--------------------------------------------------------------------------
@@ -180,7 +174,7 @@
 
 -spec start_link(SupName, GroupName, TxFun, Module, Args) ->
                         startlink_ret() when
-      SupName :: supervisor2:sup_name(),
+      SupName :: ?SUPERVISOR:sup_name(),
       GroupName :: group_name(),
       TxFun :: tx_fun(),
       Module :: module(),
@@ -189,7 +183,7 @@
 -spec start_internal(Group, TxFun, ChildSpecs) -> Result when
       Group :: group_name(),
       TxFun :: tx_fun(),
-      ChildSpecs :: [supervisor2:child_spec()],
+      ChildSpecs :: [?SUPERVISOR:child_spec()],
       Result :: {'ok', pid()} | {'error', term()}.
 
 -spec create_tables() -> Result when

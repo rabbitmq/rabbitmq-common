@@ -1,3 +1,9 @@
+ifeq ($(PLATFORM),msys2)
+HOSTNAME := $(COMPUTERNAME)
+else
+HOSTNAME := $(shell hostname -s)
+endif
+
 READY_DEPS = $(foreach DEP,\
 	       $(filter $(RABBITMQ_COMPONENTS),$(DEPS) $(BUILD_DEPS) $(TEST_DEPS)), \
 	       $(if $(wildcard $(DEPS_DIR)/$(DEP)),$(DEP),))
@@ -120,10 +126,17 @@ travis-yml:
 	$(gen_verbose) $(replace_aws_creds)
 else
 travis-yml:
-	$(gen_verbose) ! test -f .travis.yml || \
-	(grep -E -- '- secure:' .travis.yml || :) > .travis.yml.creds
-	$(verbose) cp -a $(DEPS_DIR)/rabbit_common/.travis.yml .travis.yml.orig
-	$(verbose) awk ' \
+	$(gen_verbose) \
+	set -e; \
+	if test -d .git && test -d $(DEPS_DIR)/rabbit_common/.git; then \
+		upstream_branch=$$(LANG=C git -C $(DEPS_DIR)/rabbit_common branch --list | awk '/^\* \(.*detached / {ref=$$0; sub(/.*detached [^ ]+ /, "", ref); sub(/\)$$/, "", ref); print ref; exit;} /^\* / {ref=$$0; sub(/^\* /, "", ref); print ref; exit}'); \
+		local_branch=$$(LANG=C git branch --list | awk '/^\* \(.*detached / {ref=$$0; sub(/.*detached [^ ]+ /, "", ref); sub(/\)$$/, "", ref); print ref; exit;} /^\* / {ref=$$0; sub(/^\* /, "", ref); print ref; exit}'); \
+		test "$$local_branch" = "$$upstream_branch" || exit 0; \
+	fi; \
+	test -f .travis.yml || exit 0; \
+	(grep -E -- '- secure:' .travis.yml || :) > .travis.yml.creds; \
+	cp -a $(DEPS_DIR)/rabbit_common/.travis.yml .travis.yml.orig; \
+	awk ' \
 	/^  global:/ { \
 	  print; \
 	  system("test -f .travis.yml.creds && cat .travis.yml.creds"); \
@@ -131,16 +144,16 @@ travis-yml:
 	} \
 	/- secure:/ { next; } \
 	{ print; } \
-	' < .travis.yml.orig > .travis.yml
-	$(verbose) rm -f .travis.yml.orig .travis.yml.creds
-	$(verbose) set -e; \
+	' < .travis.yml.orig > .travis.yml; \
+	rm -f .travis.yml.orig .travis.yml.creds; \
 	if test -f .travis.yml.patch; then \
 		patch -p0 < .travis.yml.patch; \
 		rm -f .travis.yml.orig; \
-	fi
-	$(verbose) $(replace_aws_creds)
+	fi; \
+	$(replace_aws_creds)
 ifeq ($(DO_COMMIT),yes)
-	$(verbose) git diff --quiet .travis.yml \
+	$(verbose) ! test -f .travis.yml || \
+	git diff --quiet .travis.yml \
 	|| git commit -m 'Travis CI: Update config from rabbitmq-common' .travis.yml
 endif
 endif
@@ -166,10 +179,22 @@ sync-gitremote: $(READY_DEPS:%=$(DEPS_DIR)/%+sync-gitremote)
 		git remote set-url --push origin \
 		'$(call dep_rmq_repo,$(RABBITMQ_CURRENT_PUSH_URL),$(notdir $*))'
 
+ifeq ($(origin, RMQ_GIT_GLOBAL_USER_NAME),undefined)
 RMQ_GIT_GLOBAL_USER_NAME := $(shell git config --global user.name)
+export RMQ_GIT_GLOBAL_USER_NAME
+endif
+ifeq ($(origin RMQ_GIT_GLOBAL_USER_EMAIL),undefined)
 RMQ_GIT_GLOBAL_USER_EMAIL := $(shell git config --global user.email)
+export RMQ_GIT_GLOBAL_USER_EMAIL
+endif
+ifeq ($(origin RMQ_GIT_USER_NAME),undefined)
 RMQ_GIT_USER_NAME := $(shell git config user.name)
+export RMQ_GIT_USER_NAME
+endif
+ifeq ($(origin RMQ_GIT_USER_EMAIL),undefined)
 RMQ_GIT_USER_EMAIL := $(shell git config user.email)
+export RMQ_GIT_USER_EMAIL
+endif
 
 sync-gituser: $(READY_DEPS:%=$(DEPS_DIR)/%+sync-gituser)
 	@:
@@ -184,6 +209,24 @@ ifeq ($(RMQ_GIT_USER_EMAIL),$(RMQ_GIT_GLOBAL_USER_EMAIL))
 	$(verbose) cd $* && git config --unset user.email || :
 else
 	$(verbose) cd $* && git config user.email "$(RMQ_GIT_USER_EMAIL)"
+endif
+
+.PHONY: sync-gitignore-from-master
+sync-gitignore-from-master: $(READY_DEPS:%=$(DEPS_DIR)/%+sync-gitignore-from-master)
+
+%+sync-gitignore-from-master:
+	$(gen_verbose) cd $* && \
+	if test -d .git; then \
+		branch=$$(LANG=C git branch --list | awk '/^\* \(.*detached / {ref=$$0; sub(/.*detached [^ ]+ /, "", ref); sub(/\)$$/, "", ref); print ref; exit;} /^\* / {ref=$$0; sub(/^\* /, "", ref); print ref; exit}'); \
+		! test "$$branch" = 'master' || exit 0; \
+		git show origin/master:.gitignore > .gitignore; \
+	fi
+ifeq ($(DO_COMMIT),yes)
+	$(verbose) cd $* && \
+	if test -d .git; then \
+		git diff --quiet .gitignore \
+		|| git commit -m 'Git: Sync .gitignore from master' .gitignore; \
+	fi
 endif
 
 .PHONY: show-branch
@@ -210,31 +253,48 @@ else \
 fi; \
 case "$(SINCE_TAG)" in \
 last-release) \
-	ref=$$(git $$git_dir describe --abbrev=0 --tags \
-		--exclude "*-beta*" \
-		--exclude "*_milestone*" \
-		--exclude "*[-_]rc*"); \
-	;; \
-last-prerelease) \
-	ref=$$(git $$git_dir describe --abbrev=0 --tags); \
+	tags_count=$$(git $$git_dir tag -l 2>/dev/null | grep -E -v '(-beta|_milestone|[-_]rc)' | wc -l); \
 	;; \
 *) \
-	git $$git_dir rev-parse "$(SINCE_TAG)" -- >/dev/null; \
-	ref=$(SINCE_TAG); \
+	tags_count=$$(git $$git_dir tag -l 2>/dev/null | wc -l); \
 	;; \
 esac; \
-commits_count=$$(git $$git_dir log --oneline "$$ref.." | wc -l); \
-if test "$$commits_count" -gt 0; then \
+if test "$$tags_count" -gt 0; then \
+	case "$(SINCE_TAG)" in \
+	last-release) \
+		ref=$$(git $$git_dir describe --abbrev=0 --tags \
+			--exclude "*-beta*" \
+			--exclude "*_milestone*" \
+			--exclude "*[-_]rc*"); \
+		;; \
+	last-prerelease) \
+		ref=$$(git $$git_dir describe --abbrev=0 --tags); \
+		;; \
+	*) \
+		git $$git_dir rev-parse "$(SINCE_TAG)" -- >/dev/null; \
+		ref=$(SINCE_TAG); \
+		;; \
+	esac; \
+	commits_count=$$(git $$git_dir log --oneline "$$ref.." | wc -l); \
+	if test "$$commits_count" -gt 0; then \
+		if test "$(MARKDOWN)" = yes; then \
+			printf "\n## [\`$$repository\`](https://github.com/rabbitmq/$$repository)\n\nCommits since \`$$ref\`:\n\n"; \
+			git $$git_dir --no-pager log $(COMMITS_LOG_OPTS) \
+				--format="format:* %s ([\`%h\`](https://github.com/rabbitmq/$$repository/commit/%H))" \
+				"$$ref.."; \
+			echo; \
+		else \
+			echo; \
+			echo "# $$repository - Commits since $$ref"; \
+			git $$git_dir log $(COMMITS_LOG_OPTS) "$$ref.."; \
+		fi; \
+	fi; \
+else \
 	if test "$(MARKDOWN)" = yes; then \
-		printf "\n## [\`$$repository\`](https://github.com/rabbitmq/$$repository)\n\nCommits since \`$$ref\`:\n\n"; \
-		git $$git_dir --no-pager log $(COMMITS_LOG_OPTS) \
-			--format="format:* %s ([\`%h\`](https://github.com/rabbitmq/$$repository/commit/%H))" \
-			"$$ref.."; \
-		echo; \
+		printf "\n## [\`$$repository\`](https://github.com/rabbitmq/$$repository)\n\n**New** since the last release!\n"; \
 	else \
 		echo; \
-		echo "# $$repository - Commits since $$ref"; \
-		git $$git_dir log $(COMMITS_LOG_OPTS) "$$ref.."; \
+		echo "# $$repository - New since the last release!"; \
 	fi; \
 fi
 endef
@@ -249,26 +309,121 @@ commits-since-release-title:
 	$(verbose) set -e; \
 	case "$(SINCE_TAG)" in \
 	last-release) \
-		ref=$$(git $$git_dir describe --abbrev=0 --tags \
-			--exclude "*-beta*" \
-			--exclude "*_milestone*" \
-			--exclude "*[-_]rc*"); \
-		;; \
-	last-prerelease) \
-		ref=$$(git $$git_dir describe --abbrev=0 --tags); \
+		tags_count=$$(git $$git_dir tag -l 2>/dev/null | grep -E -v '(-beta|_milestone|[-_]rc)' | wc -l); \
 		;; \
 	*) \
-		ref=$(SINCE_TAG); \
+		tags_count=$$(git $$git_dir tag -l 2>/dev/null | wc -l); \
 		;; \
 	esac; \
-	version=$$(echo "$$ref" | sed -E \
-		-e 's/rabbitmq_v([0-9]+)_([0-9]+)_([0-9]+)/v\1.\2.\3/' \
-		-e 's/_milestone/-beta./' \
-		-e 's/_rc/-rc./' \
-		-e 's/^v//'); \
-	echo "# Changes since RabbitMQ $$version"; \
+	if test "$$tags_count" -gt 0; then \
+		case "$(SINCE_TAG)" in \
+		last-release) \
+			ref=$$(git $$git_dir describe --abbrev=0 --tags \
+				--exclude "*-beta*" \
+				--exclude "*_milestone*" \
+				--exclude "*[-_]rc*"); \
+			;; \
+		last-prerelease) \
+			ref=$$(git $$git_dir describe --abbrev=0 --tags); \
+			;; \
+		*) \
+			ref=$(SINCE_TAG); \
+			;; \
+		esac; \
+		version=$$(echo "$$ref" | sed -E \
+			-e 's/rabbitmq_v([0-9]+)_([0-9]+)_([0-9]+)/v\1.\2.\3/' \
+			-e 's/_milestone/-beta./' \
+			-e 's/_rc/-rc./' \
+			-e 's/^v//'); \
+		echo "# Changes since RabbitMQ $$version"; \
+	else \
+		echo "# Changes since the beginning of time"; \
+	fi
 
 %+commits-since-release:
 	$(verbose) $(call show_commits_since_tag,$*)
 
 endif # ($(wildcard .git),)
+
+# --------------------------------------------------------------------
+# erlang.mk query-deps* formatting.
+# --------------------------------------------------------------------
+
+# We need to provide a repo mapping for deps resolved via git_rmq fetch method
+query_repo_git_rmq = https://github.com/rabbitmq/$(call rmq_cmp_repo_name,$(1))
+
+# --------------------------------------------------------------------
+# Common test logs compression.
+# --------------------------------------------------------------------
+
+.PHONY: ct-logs-archive clean-ct-logs-archive
+
+ifneq ($(wildcard logs/*),)
+TAR := tar
+ifeq ($(PLATFORM),freebsd)
+TAR := gtar
+endif
+ifeq ($(PLATFORM),darwin)
+TAR := gtar
+endif
+
+CT_LOGS_ARCHIVE ?= $(PROJECT)-ct-logs-$(subst _,-,$(subst -,,$(subst .,,$(patsubst ct_run.ct_$(PROJECT)@$(HOSTNAME).%,%,$(notdir $(lastword $(wildcard logs/ct_run.*))))))).tar.xz
+
+ifeq ($(patsubst %.tar.xz,%,$(CT_LOGS_ARCHIVE)),$(CT_LOGS_ARCHIVE))
+$(error CT_LOGS_ARCHIVE file must use '.tar.xz' as its filename extension)
+endif
+
+ct-logs-archive: $(CT_LOGS_ARCHIVE)
+	@:
+
+$(CT_LOGS_ARCHIVE):
+	$(gen_verbose) \
+	for file in logs/*; do \
+	  ! test -L "$$file" || rm "$$file"; \
+	done
+	$(verbose) \
+	$(TAR) -c \
+	  --exclude "*/mnesia" \
+	  --transform "s/^logs/$(patsubst %.tar.xz,%,$(notdir $(CT_LOGS_ARCHIVE)))/" \
+	  -f - logs | \
+        xz > "$@"
+else
+ct-logs-archive:
+	@:
+endif
+
+clean-ct-logs-archive::
+	$(gen_verbose) rm -f $(PROJECT)-ct-logs-*.tar.xz
+
+clean:: clean-ct-logs-archive
+
+# --------------------------------------------------------------------
+# Generate a file listing RabbitMQ component dependencies and their
+# Git commit hash.
+# --------------------------------------------------------------------
+
+.PHONY: rabbitmq-deps.mk clean-rabbitmq-deps.mk
+
+rabbitmq-deps.mk: $(PROJECT)-rabbitmq-deps.mk
+	@:
+
+closing_paren := )
+
+define rmq_deps_mk_line
+dep_$(1) := git $(dir $(RABBITMQ_UPSTREAM_FETCH_URL))$(call rmq_cmp_repo_name,$(1)).git $$(git -C "$(2)" rev-parse HEAD)
+endef
+
+$(PROJECT)-rabbitmq-deps.mk: $(ERLANG_MK_RECURSIVE_DEPS_LIST)
+	$(gen_verbose) echo "# In $(PROJECT) - commit $$(git rev-parse HEAD)" > $@
+	$(verbose) cat $(ERLANG_MK_RECURSIVE_DEPS_LIST) | \
+	while read -r dir; do \
+	  component=$$(basename "$$dir"); \
+	  case "$$component" in \
+	  $(foreach component,$(RABBITMQ_COMPONENTS),$(component)$(closing_paren) echo "$(call rmq_deps_mk_line,$(component),$$dir)" ;;) \
+	  esac; \
+	done >> $@
+
+clean:: clean-rabbitmq-deps.mk
+
+clean-rabbitmq-deps.mk:
+	$(gen_verbose) rm -f $(PROJECT)-rabbitmq-deps.mk

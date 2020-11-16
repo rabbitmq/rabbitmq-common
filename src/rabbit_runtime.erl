@@ -1,17 +1,8 @@
-%% The contents of this file are subject to the Mozilla Public License
-%% Version 1.1 (the "License"); you may not use this file except in
-%% compliance with the License. You may obtain a copy of the License
-%% at https://www.mozilla.org/MPL/
+%% This Source Code Form is subject to the terms of the Mozilla Public
+%% License, v. 2.0. If a copy of the MPL was not distributed with this
+%% file, You can obtain one at https://mozilla.org/MPL/2.0/.
 %%
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and
-%% limitations under the License.
-%%
-%% The Original Code is RabbitMQ.
-%%
-%% The Initial Developer of the Original Code is GoPivotal, Inc.
-%% Copyright (c) 2007-2018 Pivotal Software, Inc.  All rights reserved.
+%% Copyright (c) 2007-2020 VMware, Inc. or its affiliates.  All rights reserved.
 %%
 
 %% This module provides access to runtime metrics that are exposed
@@ -25,7 +16,7 @@
 
 -export([guess_number_of_cpu_cores/0, msacc_stats/1]).
 -export([get_gc_info/1, gc_all_processes/0]).
-
+-export([get_erl_path/0]).
 
 -spec guess_number_of_cpu_cores() -> pos_integer().
 guess_number_of_cpu_cores() ->
@@ -61,3 +52,15 @@ msacc_stats(TimeInMs) ->
     S = msacc:stats(),
     msacc:stop(),
     S.
+
+% get the full path to the erl executable used to start this VM
+-spec get_erl_path() -> file:filename_all().
+get_erl_path() ->
+    {ok, [[Root]]} = init:get_argument(root),
+    Bin = filename:join(Root, "bin"),
+    case os:type() of
+        {win32, _} ->
+            filename:join(Bin, "erl.exe");
+        _ ->
+            filename:join(Bin, "erl")
+    end.

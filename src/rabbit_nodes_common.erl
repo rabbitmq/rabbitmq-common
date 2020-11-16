@@ -1,17 +1,8 @@
-%% The contents of this file are subject to the Mozilla Public License
-%% Version 1.1 (the "License"); you may not use this file except in
-%% compliance with the License. You may obtain a copy of the License
-%% at https://www.mozilla.org/MPL/
+%% This Source Code Form is subject to the terms of the Mozilla Public
+%% License, v. 2.0. If a copy of the MPL was not distributed with this
+%% file, You can obtain one at https://mozilla.org/MPL/2.0/.
 %%
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and
-%% limitations under the License.
-%%
-%% The Original Code is RabbitMQ.
-%%
-%% The Initial Developer of the Original Code is GoPivotal, Inc.
-%% Copyright (c) 2007-2017 Pivotal Software, Inc.  All rights reserved.
+%% Copyright (c) 2007-2020 VMware, Inc. or its affiliates.  All rights reserved.
 %%
 
 -module(rabbit_nodes_common).
@@ -26,7 +17,7 @@
 %% API
 %%
 
--export([make/1, parts/1, names/1, ensure_epmd/0, is_running/2, is_process_running/2]).
+-export([make/1, parts/1, names/1, name_type/1, ensure_epmd/0, is_running/2, is_process_running/2]).
 -export([cookie_hash/0, epmd_port/0, diagnostics/1]).
 
 -spec make({string(), string()} | string()) -> node().
@@ -39,6 +30,11 @@
 -spec diagnostics([node()]) -> string().
 -spec cookie_hash() -> string().
 
+%% net_adm:name/1 returns a new value, 'noport', in Erlang 24. This value being
+%% absent in the function spec in previous versions of Erlang, we get a warning
+%% from Dialyzer until we start to the yet-to-be-release Erlang 24 in CI.
+%% Therefore we disable this specific warning.
+-dialyzer({nowarn_function, diagnostics_node/1}).
 
 names(Hostname) ->
     Self = self(),
@@ -52,7 +48,10 @@ names(Hostname) ->
         {'DOWN', MRef, process, Pid, Reason} -> {error, Reason}
     end.
 
-make({Prefix, Suffix}) -> list_to_atom(lists:append([Prefix, "@", Suffix]));
+make({Prefix, Suffix}) -> rabbit_data_coercion:to_atom(
+                            lists:append([rabbit_data_coercion:to_list(Prefix),
+                                          "@",
+                                          rabbit_data_coercion:to_list(Suffix)]));
 make(NodeStr)          -> make(parts(NodeStr)).
 
 parts(Node) when is_atom(Node) ->
@@ -64,6 +63,13 @@ parts(NodeStr) ->
         {Prefix, Suffix} -> {Prefix, tl(Suffix)}
     end.
 
+name_type(Node) ->
+    {_, HostPart} = parts(Node),
+    case lists:member($., HostPart) of
+        false -> shortnames;
+        true  -> longnames
+    end.
+
 epmd_port() ->
     case init:get_argument(epmd_port) of
         {ok, [[Port | _] | _]} when is_list(Port) -> Port;
@@ -71,19 +77,13 @@ epmd_port() ->
     end.
 
 ensure_epmd() ->
-    {ok, [[Prog]]} = init:get_argument(progname),
-    Exe = os:find_executable(Prog),
-    do_ensure_epmd(Exe, Prog).
-
-do_ensure_epmd(false, Prog) ->
-    Path = os:getenv("PATH"),
-    rabbit_log:error("ensure_epmd: unable to find executable '~s' in PATH: '~s'", [Prog, Path]);
-do_ensure_epmd(Exe, _) ->
+    Exe = rabbit_runtime:get_erl_path(),
     ID = rabbit_misc:random(1000000000),
     Port = open_port(
              {spawn_executable, Exe},
-             [{args, ["-sname", rabbit_misc:format("epmd-starter-~b", [ID]),
-                      "-noshell", "-eval", "halt()."]},
+             [{args, ["-boot", "no_dot_erlang",
+                      "-sname", rabbit_misc:format("epmd-starter-~b", [ID]),
+                      "-noinput", "-s", "erlang", "halt"]},
               exit_status, stderr_to_stdout, use_stdio]),
     port_shutdown_loop(Port).
 
@@ -127,6 +127,10 @@ diagnostics_node(Node) ->
          {error, Reason} ->
              [{"  * unable to connect to epmd (port ~s) on ~s: ~s~n",
                [epmd_port(), Host, rabbit_misc:format_inet_error(Reason)]}];
+         noport ->
+             [{"  * unable to connect to epmd (port ~s) on ~s: "
+               "couldn't resolve hostname~n",
+               [epmd_port(), Host]}];
          {ok, NamePorts} ->
              [{"  * connected to epmd (port ~s) on ~s",
                [epmd_port(), Host]}] ++

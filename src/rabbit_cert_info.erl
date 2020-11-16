@@ -1,17 +1,8 @@
-%% The contents of this file are subject to the Mozilla Public License
-%% Version 1.1 (the "License"); you may not use this file except in
-%% compliance with the License. You may obtain a copy of the License
-%% at https://www.mozilla.org/MPL/
+%% This Source Code Form is subject to the terms of the Mozilla Public
+%% License, v. 2.0. If a copy of the MPL was not distributed with this
+%% file, You can obtain one at https://mozilla.org/MPL/2.0/.
 %%
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and
-%% limitations under the License.
-%%
-%% The Original Code is RabbitMQ.
-%%
-%% The Initial Developer of the Original Code is GoPivotal, Inc.
-%% Copyright (c) 2007-2017 Pivotal Software, Inc.  All rights reserved.
+%% Copyright (c) 2007-2020 VMware, Inc. or its affiliates.  All rights reserved.
 %%
 
 -module(rabbit_cert_info).
@@ -20,8 +11,11 @@
 
 -export([issuer/1,
          subject/1,
+         subject_alternative_names/1,
          validity/1,
-         subject_items/2]).
+         subject_items/2,
+         extensions/1
+]).
 
 %%--------------------------------------------------------------------------
 
@@ -63,6 +57,23 @@ subject_items(Cert, Type) ->
                        subject = Subject }}) ->
                       find_by_type(Type, Subject)
               end, Cert).
+
+-spec extensions(certificate()) -> [#'Extension'{}].
+extensions(Cert) ->
+    cert_info(fun(#'OTPCertificate' {
+                     tbsCertificate = #'OTPTBSCertificate' {
+                       extensions = Extensions }}) ->
+                      Extensions
+              end, Cert).
+
+-spec subject_alternative_names(certificate()) -> [{atom(), string()}].
+subject_alternative_names(Cert) ->
+    Extensions = extensions(Cert),
+    try lists:keyfind(?'id-ce-subjectAltName', #'Extension'.extnID, Extensions) of
+        false                         -> [];
+        #'Extension'{extnValue = Val} -> Val
+    catch _:_ -> []
+    end.
 
 %% Return a string describing the certificate's validity.
 -spec validity(certificate()) -> string().

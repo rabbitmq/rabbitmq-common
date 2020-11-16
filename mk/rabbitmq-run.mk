@@ -19,12 +19,7 @@ TEST_TMPDIR ?= $(TMPDIR)/rabbitmq-test-instances
 endif
 
 # Location of the scripts controlling the broker.
-ifeq ($(PROJECT),rabbit)
-RABBITMQ_BROKER_DIR ?= $(CURDIR)
-else
-RABBITMQ_BROKER_DIR ?= $(DEPS_DIR)/rabbit
-endif
-RABBITMQ_SCRIPTS_DIR ?= $(RABBITMQ_BROKER_DIR)/scripts
+RABBITMQ_SCRIPTS_DIR ?= $(CURDIR)/sbin
 
 ifeq ($(PLATFORM),msys2)
 RABBITMQ_PLUGINS ?= $(RABBITMQ_SCRIPTS_DIR)/rabbitmq-plugins.bat
@@ -65,33 +60,43 @@ node_log_base = $(call node_tmpdir,$(1))/log
 node_mnesia_base = $(call node_tmpdir,$(1))/mnesia
 node_mnesia_dir = $(call node_mnesia_base,$(1))/$(1)
 node_quorum_dir = $(call node_mnesia_dir,$(1))/quorum
-node_schema_dir = $(call node_tmpdir,$(1))/schema
+node_stream_dir = $(call node_mnesia_dir,$(1))/stream
 node_plugins_expand_dir = $(call node_tmpdir,$(1))/plugins
-node_generated_config_dir = $(call node_tmpdir,$(1))/config
 node_feature_flags_file = $(call node_tmpdir,$(1))/feature_flags
 node_enabled_plugins_file = $(call node_tmpdir,$(1))/enabled_plugins
 
 # Broker startup variables for the test environment.
-RABBITMQ_NODENAME ?= rabbit
+ifeq ($(PLATFORM),msys2)
+HOSTNAME := $(COMPUTERNAME)
+else
+HOSTNAME := $(shell hostname -s)
+endif
+
+RABBITMQ_NODENAME ?= rabbit@$(HOSTNAME)
 RABBITMQ_NODENAME_FOR_PATHS ?= $(RABBITMQ_NODENAME)
 NODE_TMPDIR ?= $(call node_tmpdir,$(RABBITMQ_NODENAME_FOR_PATHS))
 
+RABBITMQ_BASE ?= $(NODE_TMPDIR)
 RABBITMQ_PID_FILE ?= $(call node_pid_file,$(RABBITMQ_NODENAME_FOR_PATHS))
 RABBITMQ_LOG_BASE ?= $(call node_log_base,$(RABBITMQ_NODENAME_FOR_PATHS))
 RABBITMQ_MNESIA_BASE ?= $(call node_mnesia_base,$(RABBITMQ_NODENAME_FOR_PATHS))
 RABBITMQ_MNESIA_DIR ?= $(call node_mnesia_dir,$(RABBITMQ_NODENAME_FOR_PATHS))
 RABBITMQ_QUORUM_DIR ?= $(call node_quorum_dir,$(RABBITMQ_NODENAME_FOR_PATHS))
-RABBITMQ_SCHEMA_DIR ?= $(call node_schema_dir,$(RABBITMQ_NODENAME_FOR_PATHS))
+RABBITMQ_STREAM_DIR ?= $(call node_stream_dir,$(RABBITMQ_NODENAME_FOR_PATHS))
 RABBITMQ_PLUGINS_EXPAND_DIR ?= $(call node_plugins_expand_dir,$(RABBITMQ_NODENAME_FOR_PATHS))
-RABBITMQ_GENERATED_CONFIG_DIR ?= $(call node_generated_config_dir,$(RABBITMQ_NODENAME_FOR_PATHS))
 RABBITMQ_FEATURE_FLAGS_FILE ?= $(call node_feature_flags_file,$(RABBITMQ_NODENAME_FOR_PATHS))
 RABBITMQ_ENABLED_PLUGINS_FILE ?= $(call node_enabled_plugins_file,$(RABBITMQ_NODENAME_FOR_PATHS))
+
+# Enable colourful debug logging by default
+# To change this, set RABBITMQ_LOG to info, notice, warning etc.
+RABBITMQ_LOG ?= debug,+color
+export RABBITMQ_LOG
 
 # erlang.mk adds dependencies' ebin directory to ERL_LIBS. This is
 # a sane default, but we prefer to rely on the .ez archives in the
 # `plugins` directory so the plugin code is executed. The `plugins`
 # directory is added to ERL_LIBS by rabbitmq-env.
-DIST_ERL_LIBS = $(shell echo "$(filter-out $(DEPS_DIR),$(subst :, ,$(ERL_LIBS)))" | tr ' ' :)
+DIST_ERL_LIBS = $(patsubst :%,%,$(patsubst %:,%,$(subst :$(APPS_DIR):,:,$(subst :$(DEPS_DIR):,:,:$(ERL_LIBS):))))
 
 ifdef PLUGINS_FROM_DEPS_DIR
 RMQ_PLUGINS_DIR=$(DEPS_DIR)
@@ -105,25 +110,23 @@ ERL_LIBS="$(DIST_ERL_LIBS)" \
 RABBITMQ_NODENAME="$(1)" \
 RABBITMQ_NODE_IP_ADDRESS="$(RABBITMQ_NODE_IP_ADDRESS)" \
 RABBITMQ_NODE_PORT="$(3)" \
+RABBITMQ_BASE="$(call node_tmpdir,$(2))" \
 RABBITMQ_PID_FILE="$(call node_pid_file,$(2))" \
 RABBITMQ_LOG_BASE="$(call node_log_base,$(2))" \
 RABBITMQ_MNESIA_BASE="$(call node_mnesia_base,$(2))" \
 RABBITMQ_MNESIA_DIR="$(call node_mnesia_dir,$(2))" \
 RABBITMQ_QUORUM_DIR="$(call node_quorum_dir,$(2))" \
-RABBITMQ_SCHEMA_DIR="$(call node_schema_dir,$(2))" \
-RABBITMQ_GENERATED_CONFIG_DIR="$(call node_generated_config_dir,$(2))" \
+RABBITMQ_STREAM_DIR="$(call node_stream_dir,$(2))" \
 RABBITMQ_FEATURE_FLAGS_FILE="$(call node_feature_flags_file,$(2))" \
 RABBITMQ_PLUGINS_DIR="$(if $(RABBITMQ_PLUGINS_DIR),$(RABBITMQ_PLUGINS_DIR),$(RMQ_PLUGINS_DIR))" \
 RABBITMQ_PLUGINS_EXPAND_DIR="$(call node_plugins_expand_dir,$(2))" \
-RABBITMQ_SERVER_START_ARGS="$(RABBITMQ_SERVER_START_ARGS)"
+RABBITMQ_SERVER_START_ARGS="-ra wal_sync_method sync $(RABBITMQ_SERVER_START_ARGS)" \
+RABBITMQ_ENABLED_PLUGINS="$(RABBITMQ_ENABLED_PLUGINS)"
 endef
 
 BASIC_SCRIPT_ENV_SETTINGS = \
 	$(call basic_script_env_settings,$(RABBITMQ_NODENAME),$(RABBITMQ_NODENAME_FOR_PATHS),$(RABBITMQ_NODE_PORT)) \
 	RABBITMQ_ENABLED_PLUGINS_FILE="$(RABBITMQ_ENABLED_PLUGINS_FILE)"
-
-ERL_CALL := $(shell $(ERL) -eval 'io:format("~s~n", [filename:join(code:lib_dir(erl_interface, bin), case os:type() of {win32, _} -> "erl_call.exe"; _ -> "erl_call" end)]), halt().')
-ERL_CALL_OPTS ?= -sname $(RABBITMQ_NODENAME) -e
 
 test-tmpdir:
 	$(verbose) mkdir -p $(TEST_TMPDIR)
@@ -135,54 +138,64 @@ virgin-test-tmpdir:
 node-tmpdir:
 	$(verbose) mkdir -p $(RABBITMQ_LOG_BASE) \
 		$(RABBITMQ_MNESIA_BASE) \
-		$(RABBITMQ_SCHEMA_DIR) \
-		$(RABBITMQ_PLUGINS_EXPAND_DIR) \
-		$(RABBITMQ_GENERATED_CONFIG_DIR)
+		$(RABBITMQ_PLUGINS_EXPAND_DIR)
 
 virgin-node-tmpdir:
 	$(gen_verbose) rm -rf $(NODE_TMPDIR)
 	$(verbose) mkdir -p $(RABBITMQ_LOG_BASE) \
 		$(RABBITMQ_MNESIA_BASE) \
-		$(RABBITMQ_SCHEMA_DIR) \
-		$(RABBITMQ_PLUGINS_EXPAND_DIR) \
-		$(RABBITMQ_GENERATED_CONFIG_DIR)
+		$(RABBITMQ_PLUGINS_EXPAND_DIR)
 
 .PHONY: test-tmpdir virgin-test-tmpdir node-tmpdir virgin-node-tmpdir
 
-ifeq ($(wildcard ebin/test),)
-$(RABBITMQ_ENABLED_PLUGINS_FILE): dist
-endif
-
 ifdef LEAVE_PLUGINS_DISABLED
-$(RABBITMQ_ENABLED_PLUGINS_FILE): node-tmpdir
-	$(gen_verbose) : >$@
+RABBITMQ_ENABLED_PLUGINS ?=
 else
-$(RABBITMQ_ENABLED_PLUGINS_FILE): node-tmpdir
-	$(verbose) rm -f $@
-	$(gen_verbose) $(BASIC_SCRIPT_ENV_SETTINGS) \
-	  $(RABBITMQ_PLUGINS) enable --all --offline
+RABBITMQ_ENABLED_PLUGINS ?= ALL
 endif
 
 # --------------------------------------------------------------------
 # Run a full RabbitMQ.
 # --------------------------------------------------------------------
 
-COMMA = ,
-
 define test_rabbitmq_config
 %% vim:ft=erlang:
 
 [
   {rabbit, [
-$(if $(RABBITMQ_NODE_PORT),      {listeners$(COMMA) [$(RABBITMQ_NODE_PORT)]}$(COMMA),)
+$(if $(RABBITMQ_NODE_PORT),      {tcp_listeners$(comma) [$(RABBITMQ_NODE_PORT)]}$(comma),)
       {loopback_users, []},
-      {log, [{file, [{level, debug}]}]}
+      {log, [{file, [{level, debug}]},
+             {console, [{level, debug}]}]}
     ]},
   {rabbitmq_management, [
-$(if $(RABBITMQ_NODE_PORT),      {listener$(COMMA) [{port$(COMMA) $(shell echo "$$(($(RABBITMQ_NODE_PORT) + 10000))")}]},)
+$(if $(RABBITMQ_NODE_PORT),      {listener$(comma) [{port$(comma) $(shell echo "$$(($(RABBITMQ_NODE_PORT) + 10000))")}]},)
+    ]},
+  {rabbitmq_mqtt, [
+$(if $(RABBITMQ_NODE_PORT),      {tcp_listeners$(comma) [$(shell echo "$$((1883 + $(RABBITMQ_NODE_PORT) - 5672))")]},)
+    ]},
+  {rabbitmq_stomp, [
+$(if $(RABBITMQ_NODE_PORT),      {tcp_listeners$(comma) [$(shell echo "$$((61613 + $(RABBITMQ_NODE_PORT) - 5672))")]},)
     ]},
   {ra, [
-      {data_dir, "$(RABBITMQ_QUORUM_DIR)"}
+      {data_dir, "$(RABBITMQ_QUORUM_DIR)"},
+      {wal_sync_method, sync}
+    ]},
+  {lager, [
+      {colors, [
+          %% https://misc.flogisoft.com/bash/tip_colors_and_formatting
+          {debug,     "\\\e[0;34m" },
+          {info,      "\\\e[1;37m" },
+          {notice,    "\\\e[1;36m" },
+          {warning,   "\\\e[1;33m" },
+          {error,     "\\\e[1;31m" },
+          {critical,  "\\\e[1;35m" },
+          {alert,     "\\\e[1;44m" },
+          {emergency, "\\\e[1;41m" }
+      ]}
+    ]},
+  {osiris, [
+      {data_dir, "$(RABBITMQ_STREAM_DIR)"}
     ]}
 ].
 endef
@@ -193,7 +206,8 @@ define test_rabbitmq_config_with_tls
 [
   {rabbit, [
       {loopback_users, []},
-      {log, [{file, [{level, debug}]}]},
+      {log, [{file, [{level, debug}]},
+             {console, [{level, debug}]}]},
       {ssl_listeners, [5671]},
       {ssl_options, [
           {cacertfile, "$(TEST_TLS_CERTS_DIR_in_config)/testca/cacert.pem"},
@@ -217,17 +231,37 @@ define test_rabbitmq_config_with_tls
         ]}
   ]},
   {ra, [
-      {data_dir, "$(RABBITMQ_QUORUM_DIR)"}
+      {data_dir, "$(RABBITMQ_QUORUM_DIR)"},
+      {wal_sync_method, sync}
+    ]},
+  {lager, [
+      {colors, [
+          %% https://misc.flogisoft.com/bash/tip_colors_and_formatting
+          {debug,     "\\\e[0;34m" },
+          {info,      "\\\e[1;37m" },
+          {notice,    "\\\e[1;36m" },
+          {warning,   "\\\e[1;33m" },
+          {error,     "\\\e[1;31m" },
+          {critical,  "\\\e[1;35m" },
+          {alert,     "\\\e[1;44m" },
+          {emergency, "\\\e[1;41m" }
+      ]}
+    ]},
+  {osiris, [
+      {data_dir, "$(RABBITMQ_STREAM_DIR)"}
     ]}
 ].
 endef
 
 TEST_CONFIG_FILE ?= $(TEST_TMPDIR)/test.config
-TEST_TLS_CERTS_DIR = $(TEST_TMPDIR)/tls-certs
+TEST_TLS_CERTS_DIR := $(TEST_TMPDIR)/tls-certs
+ifeq ($(origin TEST_TLS_CERTS_DIR_in_config),undefined)
 ifeq ($(PLATFORM),msys2)
-TEST_TLS_CERTS_DIR_in_config = $(shell echo $(TEST_TLS_CERTS_DIR) | sed -E "s,^/([^/]+),\1:,")
+TEST_TLS_CERTS_DIR_in_config := $(shell echo $(TEST_TLS_CERTS_DIR) | sed -E "s,^/([^/]+),\1:,")
 else
-TEST_TLS_CERTS_DIR_in_config = $(TEST_TLS_CERTS_DIR)
+TEST_TLS_CERTS_DIR_in_config := $(TEST_TLS_CERTS_DIR)
+endif
+export TEST_TLS_CERTS_DIR_in_config
 endif
 
 .PHONY: $(TEST_CONFIG_FILE)
@@ -241,19 +275,28 @@ $(TEST_TLS_CERTS_DIR): node-tmpdir
 show-test-tls-certs-dir: $(TEST_TLS_CERTS_DIR)
 	@echo $(TEST_TLS_CERTS_DIR)
 
-run-broker run-tls-broker: RABBITMQ_CONFIG_FILE ?= $(basename $(TEST_CONFIG_FILE))
+ifdef NOBUILD
+DIST_TARGET ?=
+else
+ifeq ($(wildcard ebin/test),)
+DIST_TARGET ?= dist
+else
+DIST_TARGET ?= test-dist
+endif
+endif
+
+run-broker run-tls-broker: RABBITMQ_CONFIG_FILE := $(basename $(TEST_CONFIG_FILE))
 run-broker:     config := $(test_rabbitmq_config)
 run-tls-broker: config := $(test_rabbitmq_config_with_tls)
 run-tls-broker: $(TEST_TLS_CERTS_DIR)
 
-run-broker run-tls-broker: node-tmpdir $(RABBITMQ_ENABLED_PLUGINS_FILE) \
-    $(TEST_CONFIG_FILE)
+run-broker run-tls-broker: node-tmpdir $(DIST_TARGET) $(TEST_CONFIG_FILE)
 	$(BASIC_SCRIPT_ENV_SETTINGS) \
 	  RABBITMQ_ALLOW_INPUT=true \
 	  RABBITMQ_CONFIG_FILE=$(RABBITMQ_CONFIG_FILE) \
 	  $(RABBITMQ_SERVER)
 
-run-background-broker: node-tmpdir $(RABBITMQ_ENABLED_PLUGINS_FILE)
+run-background-broker: node-tmpdir $(DIST_TARGET)
 	$(BASIC_SCRIPT_ENV_SETTINGS) \
 	  $(RABBITMQ_SERVER) -detached
 
@@ -261,13 +304,13 @@ run-background-broker: node-tmpdir $(RABBITMQ_ENABLED_PLUGINS_FILE)
 # Run a bare Erlang node.
 # --------------------------------------------------------------------
 
-run-node: node-tmpdir $(RABBITMQ_ENABLED_PLUGINS_FILE)
+run-node: node-tmpdir $(DIST_TARGET)
 	$(BASIC_SCRIPT_ENV_SETTINGS) \
 	  RABBITMQ_NODE_ONLY=true \
 	  RABBITMQ_ALLOW_INPUT=true \
 	  $(RABBITMQ_SERVER)
 
-run-background-node: virgin-node-tmpdir $(RABBITMQ_ENABLED_PLUGINS_FILE)
+run-background-node: virgin-node-tmpdir $(DIST_TARGET)
 	$(BASIC_SCRIPT_ENV_SETTINGS) \
 	  RABBITMQ_NODE_ONLY=true \
 	  $(RABBITMQ_SERVER) -detached
@@ -281,22 +324,29 @@ REDIRECT_STDIO = > $(RABBITMQ_LOG_BASE)/startup_log \
 		 2> $(RABBITMQ_LOG_BASE)/startup_err
 endif
 
-start-background-node: node-tmpdir $(RABBITMQ_ENABLED_PLUGINS_FILE)
+RMQCTL_WAIT_TIMEOUT ?= 60
+
+define rmq_started
+true = rpc:call('$(1)', rabbit, is_running, []),
+halt().
+endef
+
+start-background-node: node-tmpdir $(DIST_TARGET)
 	$(BASIC_SCRIPT_ENV_SETTINGS) \
 	  RABBITMQ_NODE_ONLY=true \
 	  $(RABBITMQ_SERVER) \
 	  $(REDIRECT_STDIO) &
 	ERL_LIBS="$(DIST_ERL_LIBS)" \
-	  $(RABBITMQCTL) -n $(RABBITMQ_NODENAME) wait $(RABBITMQ_PID_FILE) kernel
+	  $(RABBITMQCTL) -n $(RABBITMQ_NODENAME) wait --timeout $(RMQCTL_WAIT_TIMEOUT) $(RABBITMQ_PID_FILE) kernel
 
-start-background-broker: node-tmpdir $(RABBITMQ_ENABLED_PLUGINS_FILE)
+start-background-broker: node-tmpdir $(DIST_TARGET)
 	$(BASIC_SCRIPT_ENV_SETTINGS) \
 	  $(RABBITMQ_SERVER) \
 	  $(REDIRECT_STDIO) &
 	ERL_LIBS="$(DIST_ERL_LIBS)" \
-	  $(RABBITMQCTL) -n $(RABBITMQ_NODENAME) wait $(RABBITMQ_PID_FILE) && \
+	  $(RABBITMQCTL) -n $(RABBITMQ_NODENAME) wait --timeout $(RMQCTL_WAIT_TIMEOUT) $(RABBITMQ_PID_FILE) && \
 	ERL_LIBS="$(DIST_ERL_LIBS)" \
-	  $(RABBITMQCTL) -n $(RABBITMQ_NODENAME) status >/dev/null
+	  $(call erlang,$(call rmq_started,$(RABBITMQ_NODENAME)),-sname sbb-$$$$ -hidden)
 
 start-rabbit-on-node:
 	$(exec_verbose) ERL_LIBS="$(DIST_ERL_LIBS)" \
@@ -304,7 +354,7 @@ start-rabbit-on-node:
 	  eval 'rabbit:start().' | \
 	  sed -E -e '/^ completed with .* plugins\.$$/d' -e '/^ok$$/d'
 	$(verbose) ERL_LIBS="$(DIST_ERL_LIBS)" \
-	  $(RABBITMQCTL) -n $(RABBITMQ_NODENAME) wait $(RABBITMQ_PID_FILE)
+	  $(RABBITMQCTL) -n $(RABBITMQ_NODENAME) wait --timeout $(RMQCTL_WAIT_TIMEOUT) $(RABBITMQ_PID_FILE)
 
 stop-rabbit-on-node:
 	$(exec_verbose) ERL_LIBS="$(DIST_ERL_LIBS)" \
@@ -314,9 +364,10 @@ stop-rabbit-on-node:
 
 stop-node:
 	$(exec_verbose) ( \
-	  pid=$$(test -f $(RABBITMQ_PID_FILE) && cat $(RABBITMQ_PID_FILE)) && \
-	  ERL_LIBS="$(DIST_ERL_LIBS)" \
-	  $(RABBITMQCTL) -n $(RABBITMQ_NODENAME) stop && \
+	  pid=$$(test -f $(RABBITMQ_PID_FILE) && cat $(RABBITMQ_PID_FILE)); \
+	  test "$$pid" && \
+	  kill -TERM "$$pid" && \
+	  echo waiting for process to exit && \
 	  while ps -p "$$pid" >/dev/null 2>&1; do sleep 1; done \
 	  ) || :
 
@@ -328,16 +379,20 @@ stop-node:
 
 NODES ?= 2
 
-start-brokers start-cluster:
+start-brokers start-cluster: $(DIST_TARGET)
 	@for n in $$(seq $(NODES)); do \
-		nodename="rabbit-$$n@$$(hostname -s)"; \
+		nodename="rabbit-$$n@$(HOSTNAME)"; \
 		$(MAKE) start-background-broker \
+		  NOBUILD=1 \
 		  RABBITMQ_NODENAME="$$nodename" \
 		  RABBITMQ_NODE_PORT="$$((5672 + $$n - 1))" \
 		  RABBITMQ_SERVER_START_ARGS=" \
 		  -rabbit loopback_users [] \
 		  -rabbitmq_management listener [{port,$$((15672 + $$n - 1))}] \
+		  -rabbitmq_mqtt tcp_listeners [$$((1883 + $$n - 1))] \
+		  -rabbitmq_stomp tcp_listeners [$$((61613 + $$n - 1))] \
 		  -rabbitmq_prometheus tcp_config [{port,$$((15692 + $$n - 1))}] \
+		  -rabbitmq_stream tcp_listeners [$$((5555 + $$n - 1))] \
 		  "; \
 		if test '$@' = 'start-cluster' && test "$$nodename1"; then \
 			ERL_LIBS="$(DIST_ERL_LIBS)" \
@@ -353,7 +408,7 @@ start-brokers start-cluster:
 
 stop-brokers stop-cluster:
 	@for n in $$(seq $(NODES) -1 1); do \
-		nodename="rabbit-$$n@$$(hostname -s)"; \
+		nodename="rabbit-$$n@$(HOSTNAME)"; \
 		$(MAKE) stop-node \
 		  RABBITMQ_NODENAME="$$nodename"; \
 	done

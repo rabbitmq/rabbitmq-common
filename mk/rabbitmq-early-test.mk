@@ -22,6 +22,7 @@ DIALYZER_OPTS ?= -Werror_handling -Wrace_conditions
 
 ifneq ($(words $(filter %-on-concourse,$(MAKECMDGOALS))),0)
 TEST_DEPS += ci $(RMQ_CI_CT_HOOKS)
+NO_AUTOPATCH += ci $(RMQ_CI_CT_HOOKS)
 dep_ci = git git@github.com:rabbitmq/rabbitmq-ci master
 endif
 
@@ -58,17 +59,19 @@ CT_HOOKS ?= cth_styledout
 TEST_DEPS += cth_styledout
 endif
 
-RMQ_CI_CT_HOOKS = cth_fail_fast
 ifdef TRAVIS
-CT_HOOKS += $(RMQ_CI_CT_HOOKS)
-TEST_DEPS += $(RMQ_CI_CT_HOOKS)
+FAIL_FAST = 1
+SKIP_AS_ERROR = 1
 endif
+
 ifdef CONCOURSE
-CT_HOOKS += $(RMQ_CI_CT_HOOKS)
-TEST_DEPS += $(RMQ_CI_CT_HOOKS)
+FAIL_FAST = 1
+SKIP_AS_ERROR = 1
 endif
-ifdef JENKINS_HOME
-CT_HOOKS += cth_surefire $(RMQ_CI_CT_HOOKS)
+
+RMQ_CI_CT_HOOKS = cth_fail_fast
+ifeq ($(FAIL_FAST),1)
+CT_HOOKS += $(RMQ_CI_CT_HOOKS)
 TEST_DEPS += $(RMQ_CI_CT_HOOKS)
 endif
 
@@ -96,13 +99,7 @@ endif
 # On CI, set $RABBITMQ_CT_SKIP_AS_ERROR so that any skipped
 # testsuite/testgroup/testcase is considered an error.
 
-ifdef TRAVIS
-export RABBITMQ_CT_SKIP_AS_ERROR = true
-endif
-ifdef CONCOURSE
-export RABBITMQ_CT_SKIP_AS_ERROR = true
-endif
-ifdef JENKINS_HOME
+ifeq ($(SKIP_AS_ERROR),1)
 export RABBITMQ_CT_SKIP_AS_ERROR = true
 endif
 

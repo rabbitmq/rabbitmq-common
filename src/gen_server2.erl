@@ -93,7 +93,7 @@
 %%
 %% 11) Internal buffer length is emitted as a core [RabbitMQ] metric.
 
-%% All modifications are (C) 2009-2017 Pivotal Software, Inc.
+%% All modifications are (C) 2009-2020 VMware, Inc. or its affiliates.
 
 %% ``The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -204,6 +204,7 @@
 %% API
 -export([start/3, start/4,
          start_link/3, start_link/4,
+         stop/1, stop/3,
          call/2, call/3,
          cast/2, reply/2,
          abcast/2, abcast/3,
@@ -311,6 +312,16 @@ start_link(Mod, Args, Options) ->
 start_link(Name, Mod, Args, Options) ->
     gen:start(?MODULE, link, Name, Mod, Args, Options).
 
+%% -----------------------------------------------------------------
+%% Stop a generic server and wait for it to terminate.
+%% If the server is located at another node, that node will
+%% be monitored.
+%% -----------------------------------------------------------------
+stop(Name) ->
+    gen:stop(Name).
+
+stop(Name, Reason, Timeout) ->
+    gen:stop(Name, Reason, Timeout).
 
 %% -----------------------------------------------------------------
 %% Make a call to a generic server.

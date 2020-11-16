@@ -1,17 +1,8 @@
-%% The contents of this file are subject to the Mozilla Public License
-%% Version 1.1 (the "License"); you may not use this file except in
-%% compliance with the License. You may obtain a copy of the License
-%% at https://www.mozilla.org/MPL/
+%% This Source Code Form is subject to the terms of the Mozilla Public
+%% License, v. 2.0. If a copy of the MPL was not distributed with this
+%% file, You can obtain one at https://mozilla.org/MPL/2.0/.
 %%
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and
-%% limitations under the License.
-%%
-%% The Original Code is RabbitMQ.
-%%
-%% The Initial Developer of the Original Code is GoPivotal, Inc.
-%% Copyright (c) 2007-2017 Pivotal Software, Inc.  All rights reserved.
+%% Copyright (c) 2007-2020 VMware, Inc. or its affiliates.  All rights reserved.
 %%
 
 -module(worker_pool_worker).
@@ -60,7 +51,7 @@ submit(Pid, Fun, ProcessModel) ->
     gen_server2:call(Pid, {submit, Fun, self(), ProcessModel}, infinity).
 
 submit_async(Pid, Fun) ->
-    gen_server2:cast(Pid, {submit_async, Fun}).
+    gen_server2:cast(Pid, {submit_async, Fun, self()}).
 
 set_maximum_since_use(Pid, Age) ->
     gen_server2:cast(Pid, {set_maximum_since_use, Age}).
@@ -118,7 +109,13 @@ handle_cast({next_job_from, CPid}, {job, CPid, From, Fun, ProcessModel}) ->
     ok = worker_pool:idle(get(worker_pool_name), self()),
     {noreply, undefined, hibernate};
 
-handle_cast({submit_async, Fun}, undefined) ->
+handle_cast({submit_async, Fun, _CPid}, undefined) ->
+    run(Fun),
+    ok = worker_pool:idle(get(worker_pool_name), self()),
+    {noreply, undefined, hibernate};
+
+handle_cast({submit_async, Fun, CPid}, {from, CPid, MRef}) ->
+    erlang:demonitor(MRef),
     run(Fun),
     ok = worker_pool:idle(get(worker_pool_name), self()),
     {noreply, undefined, hibernate};
@@ -177,7 +174,7 @@ get_timeouts() ->
 
 set_timeout(Key, Time, Fun, Timeouts) ->
     _ = cancel_timeout(Key, Timeouts),
-    {ok, TRef} = timer:send_after(Time, {timeout, Key, Fun}),
+    TRef = erlang:send_after(Time, self(), {timeout, Key, Fun}),
     NewTimeouts = dict:store(Key, TRef, Timeouts),
     put(timeouts, NewTimeouts),
     {ok, Key}.
@@ -185,7 +182,7 @@ set_timeout(Key, Time, Fun, Timeouts) ->
 cancel_timeout(Key, Timeouts) ->
     case dict:find(Key, Timeouts) of
         {ok, TRef} ->
-            _ = timer:cancel(TRef),
+            _ = erlang:cancel_timer(TRef),
             receive {timeout, Key, _} -> ok
             after 0 -> ok
             end,

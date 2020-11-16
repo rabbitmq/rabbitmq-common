@@ -1,17 +1,8 @@
-%% The contents of this file are subject to the Mozilla Public License
-%% Version 1.1 (the "License"); you may not use this file except in
-%% compliance with the License. You may obtain a copy of the License
-%% at https://www.mozilla.org/MPL/
+%% This Source Code Form is subject to the terms of the Mozilla Public
+%% License, v. 2.0. If a copy of the MPL was not distributed with this
+%% file, You can obtain one at https://mozilla.org/MPL/2.0/.
 %%
-%% Software distributed under the License is distributed on an "AS IS"
-%% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-%% the License for the specific language governing rights and
-%% limitations under the License.
-%%
-%% The Original Code is RabbitMQ.
-%%
-%% The Initial Developer of the Original Code is GoPivotal, Inc.
-%% Copyright (c) 2007-2017 Pivotal Software, Inc.  All rights reserved.
+%% Copyright (c) 2007-2020 VMware, Inc. or its affiliates.  All rights reserved.
 %%
 
 -module(worker_pool).
@@ -52,6 +43,7 @@
 -export([start_link/1,
          submit/1, submit/2, submit/3,
          submit_async/1, submit_async/2,
+         dispatch_sync/1, dispatch_sync/2,
          ready/2,
          idle/2,
          default_pool/0]).
@@ -68,6 +60,7 @@
 -spec submit(fun (() -> A) | mfargs(), 'reuse' | 'single') -> A.
 -spec submit(atom(), fun (() -> A) | mfargs(), 'reuse' | 'single') -> A.
 -spec submit_async(fun (() -> any()) | mfargs()) -> 'ok'.
+-spec dispatch_sync(fun(() -> any()) | mfargs()) -> 'ok'.
 -spec ready(atom(), pid()) -> 'ok'.
 -spec idle(atom(), pid()) -> 'ok'.
 -spec default_pool() -> atom().
@@ -102,6 +95,13 @@ submit(Server, Fun, ProcessModel) ->
 submit_async(Fun) -> submit_async(?DEFAULT_POOL, Fun).
 
 submit_async(Server, Fun) -> gen_server2:cast(Server, {run_async, Fun}).
+
+dispatch_sync(Fun) ->
+    dispatch_sync(?DEFAULT_POOL, Fun).
+
+dispatch_sync(Server, Fun) ->
+    Pid = gen_server2:call(Server, {next_free, self()}, infinity),
+    worker_pool_worker:submit_async(Pid, Fun).
 
 ready(Server, WPid) -> gen_server2:cast(Server, {ready, WPid}).
 
